@@ -32,7 +32,7 @@ import {
 } from '../../src/storage/index.js';
 
 describe('Errors & Normalization', () => {
-  it('maps transport errors into ZapidError hierarchy', () => {
+  it('maps transport errors into ZapindError hierarchy', () => {
     expect(normalizeError({ status: 401, message: 'Session expired' })).toBeInstanceOf(SessionError);
     expect(normalizeError({ status: 403, message: 'Forbidden' })).toBeInstanceOf(PermissionError);
     expect(normalizeError({ status: 404, message: 'Not found' })).toBeInstanceOf(NotFoundError);
@@ -175,7 +175,7 @@ describe('Policies & Mappers & EventBus', () => {
 describe('SessionStore implementations', () => {
   let dir: string;
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'zapid-session-'));
+    dir = await mkdtemp(join(tmpdir(), 'zapind-session-'));
   });
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });

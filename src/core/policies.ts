@@ -1,4 +1,4 @@
-import { NetworkError, RateLimitError, ZapidError, normalizeError } from '../errors/index.js';
+import { NetworkError, RateLimitError, ZapindError, normalizeError } from '../errors/index.js';
 
 export interface Logger {
   debug(message: string, meta?: Record<string, unknown>): void;
@@ -125,7 +125,7 @@ export async function withRetry<T>(
       return await operation();
     } catch (err) {
       lastError = err;
-      const isRetryable = err instanceof ZapidError && err.retryable;
+      const isRetryable = err instanceof ZapindError && err.retryable;
       if (!allowRetry || !isRetryable || attempt >= attempts) throw err;
 
       const delayMs =

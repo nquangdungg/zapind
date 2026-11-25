@@ -1,27 +1,27 @@
-# REFACTOR_REPORT.md — `zca-js` → `zapid`
+# REFACTOR_REPORT.md — `zca-js` → `zapind`
 
-> **Package:** `zapid@0.1.0`
+> **Package:** `zapind@0.1.0`
 > **License:** `GPL-3.0-only` (based on `zca-js`, originally MIT)
-> **Repository:** `https://github.com/nquangdungg/zapid` (local: `d:\Documents\GitHub\zapid`)
-> **Underlying Engine:** `zca-js@^2.4.0` (audited from clone at `C:\Users\nquan\Desktop\zapid`)
+> **Repository:** `https://github.com/nquangdungg/zapind` (local: `d:\Documents\GitHub\zapind`)
+> **Underlying Engine:** `zca-js@^2.4.0` (audited from clone at `C:\Users\nquan\Desktop\zapind`)
 
 ---
 
 ## 1. Những gì đã thay đổi
 
-- Đóng gói `zca-js` làm internal transport engine duy nhất tại `src/transport/zca.transport.ts`, xây dựng lớp SDK hiện đại `Zapid` phía trên theo kiến trúc phân tầng:
-  `Public API (Zapid) → Contextual Models → Domain Services → Core Policies & Cache → Session Storage → TransportAdapter → zca-js`.
+- Đóng gói `zca-js` làm internal transport engine duy nhất tại `src/transport/zca.transport.ts`, xây dựng lớp SDK hiện đại `Zapind` phía trên theo kiến trúc phân tầng:
+  `Public API (Zapind) → Contextual Models → Domain Services → Core Policies & Cache → Session Storage → TransportAdapter → zca-js`.
 - Tổ chức toàn bộ public API theo 9 domain rõ ràng: `account`, `users`, `contacts`, `groups`, `conversations`, `messages`, `media`, `settings`, `events` — kèm `client.raw` cho 10% nhu cầu low-level.
 - Xây dựng hệ thống **Contextual Models** (`User`, `Profile`, `Contact`, `Group`, `Conversation`, `Message`) có hành vi trực tiếp (`.send()`, `.reply()`, `.react()`, `.undo()`, `.delete()`, `.markSeen()`, `.getMessages()`, `.pin()`, `.mute()`, `.rename()`, `.leave()`, ...).
-- Chuẩn hóa hệ thống lỗi (`ZapidError` + 8 subclass), hệ thống sự kiện thống nhất (`message`, `reaction`, `group.update`, `user.update`, `typing`, `seen`, `undo`, `auth.required`, `connected`, `disconnected`, `error`), và quản lý phiên tự động (`MemorySessionStore`, `FileSessionStore`, `EncryptedFileSessionStore`).
+- Chuẩn hóa hệ thống lỗi (`ZapindError` + 8 subclass), hệ thống sự kiện thống nhất (`message`, `reaction`, `group.update`, `user.update`, `typing`, `seen`, `undo`, `auth.required`, `connected`, `disconnected`, `error`), và quản lý phiên tự động (`MemorySessionStore`, `FileSessionStore`, `EncryptedFileSessionStore`).
 
 ---
 
-## 2. API cũ (`zca-js`) → API mới (`zapid`)
+## 2. API cũ (`zca-js`) → API mới (`zapind`)
 
-| Tác vụ | `zca-js` (cũ) | `zapid` (mới) |
+| Tác vụ | `zca-js` (cũ) | `zapind` (mới) |
 |---|---|---|
-| Khởi tạo & Login | `new Zalo()` + tự đọc file + `zalo.login()` / `zalo.loginQR()` + bắt `GotLoginInfo` | `const client = new Zapid({ session: "./session.json" }); await client.login();` |
+| Khởi tạo & Login | `new Zalo()` + tự đọc file + `zalo.login()` / `zalo.loginQR()` + bắt `GotLoginInfo` | `const client = new Zapind({ session: "./session.json" }); await client.login();` |
 | Gửi tin nhắn DM | `api.sendMessage({ msg: "Hi" }, userId, ThreadType.User)` | `await client.messages.send(userId, "Hi")` hoặc `await user.send("Hi")` |
 | Gửi tin nhắn Group | `api.sendMessage({ msg: "Hi" }, groupId, ThreadType.Group)` | `await client.messages.send(groupId, "Hi")` hoặc `await group.send("Hi")` |
 | Trả lời tin nhắn | Tự tạo object `quote: { content, msgType, uidFrom, msgId, cliMsgId, ts, ttl }` | `await message.reply("Got it!")` hoặc `client.messages.send(id, { text, replyTo: message })` |
@@ -60,17 +60,17 @@ Chạy bằng `npm run bench` (`tests/benchmark.ts` trên Node.js v24.18.0):
 
 ## 5. Dependencies thay đổi
 
-- **Runtime dependencies của `zapid`:** Duy nhất **`zca-js` (`^2.4.0`)** — không thêm bất kỳ thư viện runtime bên ngoài nào; toàn bộ crypto mã hóa session at-rest (AES-256-GCM), atomic file store, rate limiter, cache, logger đều dùng Node.js built-in (`node:crypto`, `node:fs/promises`, `node:path`).
+- **Runtime dependencies của `zapind`:** Duy nhất **`zca-js` (`^2.4.0`)** — không thêm bất kỳ thư viện runtime bên ngoài nào; toàn bộ crypto mã hóa session at-rest (AES-256-GCM), atomic file store, rate limiter, cache, logger đều dùng Node.js built-in (`node:crypto`, `node:fs/promises`, `node:path`).
 - **Dev dependencies tối giản:** `typescript`, `tsup`, `vitest`, `eslint`, `typescript-eslint`, `tsx`, `@types/node`.
 
 ---
 
 ## 6. Breaking Changes (so với dùng trực tiếp `zca-js`)
 
-- Entry point mới là `Zapid` (`import { Zapid } from "zapid"`) thay vì `Zalo`.
+- Entry point mới là `Zapind` (`import { Zapind } from "zapind"`) thay vì `Zalo`.
 - `messages.send(target, content)` đổi thứ tự tham số thành `(target, content)` thay vì `(content, threadId, threadType)` để nhất quán với các SDK hiện đại (`users.get`, `groups.get`, `conversations.get`).
 - Payload sự kiện `message` là `Message` model đã chuẩn hóa (`msg.text`, `msg.sender`, `msg.timestamp`, `msg.conversation`) thay vì raw `UserMessage | GroupMessage`.
-- Mọi lỗi đều được chuẩn hóa thành `ZapidError` thay vì `ZaloApiError` thô.
+- Mọi lỗi đều được chuẩn hóa thành `ZapindError` thay vì `ZaloApiError` thô.
 
 ---
 
@@ -90,7 +90,7 @@ Chạy bằng `npm run bench` (`tests/benchmark.ts` trên Node.js v24.18.0):
 | Unit Tests | `npm run test:unit` | **PASS** (1 file, **8/8 tests passed**) |
 | Integration Tests (`MockTransport`) | `npm run test:integration` | **PASS** (1 file, **4/4 tests passed**) |
 | Build (`tsup`) | `npm run build` | **PASS** (ESM 83.35 KB, CJS 84.08 KB, DTS 38.47 KB) |
-| ESM & CJS Runtime Import | `node -e ...` | **PASS** (30 exports, `new Zapid()` OK trên cả ESM & CJS) |
+| ESM & CJS Runtime Import | `node -e ...` | **PASS** (30 exports, `new Zapind()` OK trên cả ESM & CJS) |
 | Benchmark | `npm run bench` | **PASS** (số liệu thực tế ở mục 4) |
 
 ---
@@ -106,6 +106,6 @@ Chạy bằng `npm run bench` (`tests/benchmark.ts` trên Node.js v24.18.0):
 
 ## 10. Những việc còn lại
 
-1. Kiểm chứng live với tài khoản Zalo thật (`ZAPID_LIVE_TEST=1 npm run test:live`).
-2. Kiểm tra tên package `zapid` trên npm registry trước khi `npm publish`.
-3. Triển khai thư viện **Python (`zapid` cho PyPI)** ở giai đoạn tiếp theo sau khi chốt transport strategy (Native Python protocol port vs Node sidecar bridge).
+1. Kiểm chứng live với tài khoản Zalo thật (`ZAPIND_LIVE_TEST=1 npm run test:live`).
+2. Kiểm tra tên package `zapind` trên npm registry trước khi `npm publish`.
+3. Triển khai thư viện **Python (`zapind` cho PyPI)** ở giai đoạn tiếp theo sau khi chốt transport strategy (Native Python protocol port vs Node sidecar bridge).

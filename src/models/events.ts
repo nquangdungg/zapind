@@ -1,6 +1,6 @@
 import type { CloseReason, ThreadType } from './enums.js';
 import type { Message } from './entities.js';
-import type { ZapidError } from '../errors/index.js';
+import type { ZapindError } from '../errors/index.js';
 
 export interface ConnectionEvent {
   readonly connected: boolean;
@@ -57,10 +57,10 @@ export interface UserUpdateEvent {
 
 export interface AuthRequiredEvent {
   readonly reason: 'no_session' | 'session_expired';
-  readonly error?: ZapidError;
+  readonly error?: ZapindError;
 }
 
-export interface ZapidEventMap {
+export interface ZapindEventMap {
   message: Message;
   reaction: ReactionEvent;
   'group.update': GroupUpdateEvent;
@@ -71,11 +71,11 @@ export interface ZapidEventMap {
   'auth.required': AuthRequiredEvent;
   connected: ConnectionEvent;
   disconnected: ConnectionEvent;
-  error: ZapidError;
+  error: ZapindError;
 }
 
-export type ZapidEventName = keyof ZapidEventMap;
-export type ZapidEventHandler<K extends ZapidEventName> = (
-  payload: ZapidEventMap[K],
+export type ZapindEventName = keyof ZapindEventMap;
+export type ZapindEventHandler<K extends ZapindEventName> = (
+  payload: ZapindEventMap[K],
 ) => void | Promise<void>;
 export type UnsubscribeFn = () => void;

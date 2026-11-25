@@ -4,19 +4,19 @@ import {
   MemorySessionStore,
   Reaction,
   ThreadType,
-  Zapid,
+  Zapind,
   noopLogger,
 } from '../../src/index.js';
 import { MockTransport } from './mock-transport.js';
 
-describe('Zapid end-to-end integration (MockTransport)', () => {
+describe('Zapind end-to-end integration (MockTransport)', () => {
   it('auto-restores session and falls back to QR login when expired', async () => {
     const store = new MemorySessionStore();
     const authEvents: string[] = [];
 
     // First login: no session -> emits auth.required(no_session) -> QR login -> saves session
     const t1 = new MockTransport();
-    const c1 = new Zapid({ session: store, transport: t1, logger: noopLogger, rateLimit: false });
+    const c1 = new Zapind({ session: store, transport: t1, logger: noopLogger, rateLimit: false });
     c1.on('auth.required', (e) => {
       authEvents.push(e.reason);
     });
@@ -26,7 +26,7 @@ describe('Zapid end-to-end integration (MockTransport)', () => {
 
     // Second login: valid session -> restores without QR
     const t2 = new MockTransport();
-    const c2 = new Zapid({ session: store, transport: t2, logger: noopLogger, rateLimit: false });
+    const c2 = new Zapind({ session: store, transport: t2, logger: noopLogger, rateLimit: false });
     const onQR = vi.fn();
     await c2.login({ onQRCode: onQR });
     expect(onQR).not.toHaveBeenCalled();
@@ -34,7 +34,7 @@ describe('Zapid end-to-end integration (MockTransport)', () => {
     // Third login: expired session -> emits auth.required(session_expired) -> falls back to QR
     const t3 = new MockTransport();
     t3.failCredentialLogin = true;
-    const c3 = new Zapid({ session: store, transport: t3, logger: noopLogger, rateLimit: false });
+    const c3 = new Zapind({ session: store, transport: t3, logger: noopLogger, rateLimit: false });
     c3.on('auth.required', (e) => {
       authEvents.push(e.reason);
     });
@@ -45,7 +45,7 @@ describe('Zapid end-to-end integration (MockTransport)', () => {
 
   it('auto-resolves threadType and supports contextual objects (user, group, conversation, message)', async () => {
     const transport = new MockTransport();
-    const client = new Zapid({ transport, logger: noopLogger, rateLimit: false });
+    const client = new Zapind({ transport, logger: noopLogger, rateLimit: false });
     await client.login();
 
     // Auto-resolves group ID without manual ThreadType!
@@ -87,7 +87,7 @@ describe('Zapid end-to-end integration (MockTransport)', () => {
 
   it('caches user/group lookups and deduplicates concurrent requests', async () => {
     const transport = new MockTransport();
-    const client = new Zapid({ transport, logger: noopLogger, rateLimit: false });
+    const client = new Zapind({ transport, logger: noopLogger, rateLimit: false });
     await client.login();
 
     // 3 concurrent calls -> 1 network request
@@ -118,8 +118,8 @@ describe('Zapid end-to-end integration (MockTransport)', () => {
     const tB = new MockTransport();
     tB.ownId = 'bot-B';
 
-    const clientA = new Zapid({ transport: tA, logger: noopLogger, rateLimit: false });
-    const clientB = new Zapid({ transport: tB, logger: noopLogger, rateLimit: false });
+    const clientA = new Zapind({ transport: tA, logger: noopLogger, rateLimit: false });
+    const clientB = new Zapind({ transport: tB, logger: noopLogger, rateLimit: false });
     await Promise.all([clientA.login(), clientB.login()]);
 
     const received: string[] = [];

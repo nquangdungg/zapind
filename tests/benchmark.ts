@@ -5,7 +5,7 @@ import { mapMessageData } from '../src/mappers/index.js';
 import { ThreadType } from '../src/models/index.js';
 
 async function main(): Promise<void> {
-  console.log('=== Zapid Micro-Benchmark ===');
+  console.log('=== Zapind Micro-Benchmark ===');
 
   // 1. Message normalization throughput
   const sampleRaw = {

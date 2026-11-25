@@ -1,15 +1,15 @@
-# Zapid
+# Zapind
 
 **Developer-friendly, type-safe, contextual Zalo SDK for JavaScript & TypeScript** — powered by `zca-js` under the hood.
 
-Zapid wraps `zca-js` with a clean domain-oriented API, automatic `threadType` resolution, contextual objects (`user.send()`, `group.send()`, `conversation.send()`, `message.reply()`), built-in session management, unified error hierarchy, caching, request deduplication, and full access to the low-level engine via `client.raw`.
+Zapind wraps `zca-js` with a clean domain-oriented API, automatic `threadType` resolution, contextual objects (`user.send()`, `group.send()`, `conversation.send()`, `message.reply()`), built-in session management, unified error hierarchy, caching, request deduplication, and full access to the low-level engine via `client.raw`.
 
 ---
 
 ## Installation
 
 ```bash
-npm install zapid
+npm install zapind
 ```
 
 Requires **Node.js >= 20**.
@@ -19,9 +19,9 @@ Requires **Node.js >= 20**.
 ## Quick Start
 
 ```ts
-import { Zapid, Reaction } from "zapid";
+import { Zapind, Reaction } from "zapind";
 
-const client = new Zapid({
+const client = new Zapind({
   session: "./session.json",
 });
 
@@ -51,7 +51,7 @@ client.startListening({ retryOnClose: true });
 3. Saves the fresh session automatically.
 
 ```ts
-const client = new Zapid({
+const client = new Zapind({
   session: "./session.json",
 });
 
@@ -71,7 +71,7 @@ console.log("Logged in as:", session.accountId, session.displayName);
 
 ## Sending Messages
 
-No need to manually pass `ThreadType.User` or `ThreadType.Group` — Zapid resolves `threadType` automatically from contextual objects or its cached Group ID registry.
+No need to manually pass `ThreadType.User` or `ThreadType.Group` — Zapind resolves `threadType` automatically from contextual objects or its cached Group ID registry.
 
 ```ts
 // Plain text (auto-detects DM vs Group)
@@ -88,7 +88,7 @@ await client.messages.send(groupId, {
 
 // Send a link, sticker, voice, or video with the same API
 await client.messages.send(groupId, {
-  link: { url: "https://github.com/nquangdungg/zapid" },
+  link: { url: "https://github.com/nquangdungg/zapind" },
 });
 ```
 
@@ -163,7 +163,7 @@ const uploaded = await client.media.upload(groupId, "./document.pdf");
 await client.media.send(groupId, "./document.pdf", "Weekly report");
 ```
 
-> **Note:** When uploading local image files by path, provide `imageMetadataGetter` in `new Zapid({ imageMetadataGetter })` or pass a `Buffer` with `{ data, filename, width, height }`.
+> **Note:** When uploading local image files by path, provide `imageMetadataGetter` in `new Zapind({ imageMetadataGetter })` or pass a `Buffer` with `{ data, filename, width, height }`.
 
 ---
 
@@ -192,16 +192,16 @@ client.stopListening();
 
 ## Sessions
 
-Zapid ships with 3 built-in `SessionStore` implementations:
+Zapind ships with 3 built-in `SessionStore` implementations:
 
 - **`MemorySessionStore`** (default) — in-memory only.
 - **`FileSessionStore`** (shorthand: `session: "./session.json"`) — atomic writes with `0o600` permissions on POSIX.
 - **`EncryptedFileSessionStore`** — AES-256-GCM encryption at rest:
 
 ```ts
-import { Zapid, EncryptedFileSessionStore } from "zapid";
+import { Zapind, EncryptedFileSessionStore } from "zapind";
 
-const client = new Zapid({
+const client = new Zapind({
   session: new EncryptedFileSessionStore("./session.enc.json", process.env.SESSION_KEY!),
 });
 ```
@@ -216,11 +216,11 @@ await client.logout({ clearSession: true });
 
 ## Error Handling
 
-All errors inherit from `ZapidError`:
+All errors inherit from `ZapindError`:
 
 ```ts
 import {
-  ZapidError,
+  ZapindError,
   AuthenticationError,
   SessionError,
   NetworkError,
@@ -229,7 +229,7 @@ import {
   PermissionError,
   NotFoundError,
   APIError,
-} from "zapid";
+} from "zapind";
 
 try {
   await client.messages.send(groupId, "Hello");
@@ -238,7 +238,7 @@ try {
     console.error("Rate limited, retry after:", err.retryAfterMs);
   } else if (err instanceof SessionError) {
     console.error("Session expired, re-login required");
-  } else if (err instanceof ZapidError) {
+  } else if (err instanceof ZapindError) {
     console.error(err.code, err.message);
   }
 }
@@ -267,4 +267,4 @@ GNU GENERAL PUBLIC LICENSE v3
 This project is based on zca-js,
 originally licensed under the MIT License.
 
-Zapid is distributed under the GNU GPL v3.0.
+Zapind is distributed under the GNU GPL v3.0.

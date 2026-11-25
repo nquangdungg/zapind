@@ -83,7 +83,7 @@ export interface SendMessagePayload {
     readonly height?: number;
     readonly ttlMs?: number;
   };
-  /** Optional explicit override; normally auto-resolved by Zapid. */
+  /** Optional explicit override; normally auto-resolved by Zapind. */
   readonly threadType?: ThreadType;
 }
 

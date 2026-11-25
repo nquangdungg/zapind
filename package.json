@@ -1,5 +1,5 @@
 {
-  "name": "zapid",
+  "name": "zapind",
   "version": "0.1.0",
   "description": "Developer-friendly, type-safe, contextual Zalo SDK built on top of zca-js.",
   "type": "module",
@@ -20,11 +20,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nquangdungg/zapid.git"
+    "url": "git+https://github.com/nquangdungg/zapind.git"
   },
-  "homepage": "https://github.com/nquangdungg/zapid#readme",
+  "homepage": "https://github.com/nquangdungg/zapind#readme",
   "bugs": {
-    "url": "https://github.com/nquangdungg/zapid/issues"
+    "url": "https://github.com/nquangdungg/zapind/issues"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -42,7 +42,7 @@
   },
   "keywords": [
     "zalo",
-    "zapid",
+    "zapind",
     "zalo-sdk",
     "zalo-bot",
     "zca-js",

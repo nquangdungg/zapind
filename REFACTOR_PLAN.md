@@ -1,8 +1,8 @@
-# REFACTOR_PLAN.md — Refactoring `zca-js` into `zapid`
+# REFACTOR_PLAN.md — Refactoring `zca-js` into `zapind`
 
-> **Audited Engine:** `zca-js` v2.4.0 (cloned at `C:\Users\nquan\Desktop\zapid` — 174 API modules, 24 models, 5 error classes, 4 sync modules).
-> **Target Package:** `zapid` (JavaScript / TypeScript SDK in `d:\Documents\GitHub\zapid`, remote `https://github.com/nquangdungg/zapid.git`).
-> **Strategy:** Keep `zca-js` as an encapsulated internal transport engine (`dependencies: { "zca-js": "^2.4.0" }`), build a clean developer-first SDK (`Zapid`) on top, and retain `client.raw` as an explicit escape hatch for 100% low-level control.
+> **Audited Engine:** `zca-js` v2.4.0 (cloned at `C:\Users\nquan\Desktop\zapind` — 174 API modules, 24 models, 5 error classes, 4 sync modules).
+> **Target Package:** `zapind` (JavaScript / TypeScript SDK in `d:\Documents\GitHub\zapind`, remote `https://github.com/nquangdungg/zapind.git`).
+> **Strategy:** Keep `zca-js` as an encapsulated internal transport engine (`dependencies: { "zca-js": "^2.4.0" }`), build a clean developer-first SDK (`Zapind`) on top, and retain `client.raw` as an explicit escape hatch for 100% low-level control.
 
 ---
 
@@ -25,19 +25,19 @@
 
 ### A. Có thể tự động hóa ngay (Automate Immediately)
 
-| Concern | `zca-js` Manual Burden | `zapid` Automation |
+| Concern | `zca-js` Manual Burden | `zapind` Automation |
 |---|---|---|
 | `threadType` | Passed manually to 30 APIs | Auto-resolved via contextual object (`UserModel`/`GroupModel`/`ConversationModel`/`MessageModel`) or cached `ThreadTypeRegistry` (lazy `getAllGroups()` + incoming event learning). Explicit override still supported. |
 | Message payload normalization | `{ msg, quote, attachments, mentions, styles }` vs `sendLink`/`sendSticker`/`sendVoice`/`sendVideo` | Unified `client.messages.send(target, "text" \| SendPayload)` with automatic routing for text, attachments, quote (`replyTo`), mentions, styles, link, sticker, voice, video. |
 | ID extraction | Caller extracts `msg.threadId`, `msg.data.msgId`, `msg.data.cliMsgId`, `msg.data.uidFrom` | Methods accept either string IDs or rich model objects (`user`, `group`, `conversation`, `message`). |
 | Response parsing | Unwrap `gridInfoMap[id]`, `changed_profiles[id]`, `ts: string`, `e2ee: 0\|1`, `isFr: 0\|1` | Normalized immutable public models with `Date`, `boolean`, and clean field names. |
 | Default options | `userAgent`, `language`, `checkUpdate`, `logging`, `timeout` | Sensible defaults (`checkUpdate: false`, `logging: false`, 15s timeout, 180s QR timeout, safe rate limiter). |
-| Session lookup & restore | Manual `fs.readFile` + `login()` + fallback to `loginQR()` | `new Zapid({ session: "./session.json" })` + `await client.login()` auto-restores, validates, and falls back to QR login. |
-| Error normalization | Raw `ZaloApiError` / Node `fetch` / `ws` errors | Mapped to `ZapidError` hierarchy (`AuthenticationError`, `SessionError`, `NetworkError`, `RateLimitError`, `ValidationError`, `PermissionError`, `NotFoundError`, `APIError`). |
+| Session lookup & restore | Manual `fs.readFile` + `login()` + fallback to `loginQR()` | `new Zapind({ session: "./session.json" })` + `await client.login()` auto-restores, validates, and falls back to QR login. |
+| Error normalization | Raw `ZaloApiError` / Node `fetch` / `ws` errors | Mapped to `ZapindError` hierarchy (`AuthenticationError`, `SessionError`, `NetworkError`, `RateLimitError`, `ValidationError`, `PermissionError`, `NotFoundError`, `APIError`). |
 
 ### B. Có thể abstraction (Domain & Contextual Abstractions)
 
-- **Facade:** `Zapid` class (multi-account, zero singletons).
+- **Facade:** `Zapind` class (multi-account, zero singletons).
 - **Domain Namespaces:** `client.account`, `client.users`, `client.contacts`, `client.groups`, `client.conversations`, `client.messages`, `client.media`, `client.settings`, `client.events`.
 - **Contextual Models (Objects with Behavior):**
   - `User` (`user.send()`, `user.block()`, `user.unblock()`, `user.sendFriendRequest()`)
@@ -63,16 +63,16 @@
 
 ---
 
-## 3. Target Architecture (`d:\Documents\GitHub\zapid`)
+## 3. Target Architecture (`d:\Documents\GitHub\zapind`)
 
 ```text
-Public API (Zapid)
+Public API (Zapind)
   ├── Domain Services (account, users, contacts, groups, conversations, messages, media, settings)
   ├── Contextual Models (User, Contact, Group, Conversation, Message)
   ├── Event Bus (events / client.on)
   ├── Session Manager & Stores (Memory / File / EncryptedFile)
   ├── Performance & Resilience Layer (TTLCache, InFlightDeduplicator, ThreadTypeRegistry, Timeout, Retry, RateLimiter, RedactingLogger)
-  ├── Error Hierarchy (ZapidError + subclasses)
+  ├── Error Hierarchy (ZapindError + subclasses)
   ├── Escape Hatch (client.raw)
   └── Transport Layer (TransportAdapter -> ZcaTransport wrapping zca-js)
 ```
@@ -82,6 +82,6 @@ Public API (Zapid)
 ## 4. Verification & Benchmark Plan
 
 - Unit tests: errors, mappers, TTLCache, ThreadTypeRegistry, policies, session stores, event bus.
-- Integration tests (`MockTransport`): full `Zapid` flows including contextual objects (`user.send`, `group.send`, `conversation.send`, `message.reply`, `message.react`), automatic `threadType` resolution, session auto-restore/fallback, error normalization, and multi-account isolation.
+- Integration tests (`MockTransport`): full `Zapind` flows including contextual objects (`user.send`, `group.send`, `conversation.send`, `message.reply`, `message.react`), automatic `threadType` resolution, session auto-restore/fallback, error normalization, and multi-account isolation.
 - Benchmark (`tests/benchmark.ts`): real measured performance of `TTLCache` + `InFlightDeduplicator` + `ThreadTypeRegistry` + message normalization throughput.
-- Full verification gate before commit & push: `typecheck` → `lint` → `test` → `build` → ESM & CJS runtime import checks → clean git push to `https://github.com/nquangdungg/zapid`.
+- Full verification gate before commit & push: `typecheck` → `lint` → `test` → `build` → ESM & CJS runtime import checks → clean git push to `https://github.com/nquangdungg/zapind`.

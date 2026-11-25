@@ -87,7 +87,7 @@ export class ZcaTransport implements TransportAdapter {
 
   private requireApi(): API {
     if (!this.api) {
-      throw new AuthenticationError('Zapid client is not authenticated. Call await client.login() first.');
+      throw new AuthenticationError('Zapind client is not authenticated. Call await client.login() first.');
     }
     return this.api;
   }

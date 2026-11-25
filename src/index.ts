@@ -1,7 +1,7 @@
-export { Zapid, DEFAULT_USER_AGENT, type ZapidOptions, type EventsNamespace } from './zapid.js';
+export { Zapind, DEFAULT_USER_AGENT, type ZapindOptions, type EventsNamespace } from './zapind.js';
 
 export {
-  ZapidError,
+  ZapindError,
   AuthenticationError,
   SessionError,
   NetworkError,
@@ -10,8 +10,8 @@ export {
   PermissionError,
   NotFoundError,
   APIError,
-  type ZapidErrorCode,
-  type ZapidErrorOptions,
+  type ZapindErrorCode,
+  type ZapindErrorOptions,
 } from './errors/index.js';
 
 export {
@@ -69,9 +69,9 @@ export {
   type GroupUpdateEvent,
   type UserUpdateEvent,
   type AuthRequiredEvent,
-  type ZapidEventMap,
-  type ZapidEventName,
-  type ZapidEventHandler,
+  type ZapindEventMap,
+  type ZapindEventName,
+  type ZapindEventHandler,
   type UnsubscribeFn,
 } from './models/index.js';
 

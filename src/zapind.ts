@@ -30,8 +30,8 @@ import {
   type SessionInfo,
   type UnsubscribeFn,
   type User,
-  type ZapidEventHandler,
-  type ZapidEventName,
+  type ZapindEventHandler,
+  type ZapindEventName,
 } from './models/index.js';
 import {
   AccountService,
@@ -55,7 +55,7 @@ import { ZcaTransport } from './transport/zca.transport.js';
 export const DEFAULT_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0';
 
-export interface ZapidOptions {
+export interface ZapindOptions {
   /** Path to a session JSON file (e.g. "./session.json") or a custom SessionStore instance. */
   readonly session?: string | SessionStore;
   readonly timeoutMs?: number;
@@ -75,17 +75,17 @@ export interface ZapidOptions {
 }
 
 export interface EventsNamespace {
-  on: <K extends ZapidEventName>(event: K, handler: ZapidEventHandler<K>) => UnsubscribeFn;
-  once: <K extends ZapidEventName>(event: K, handler: ZapidEventHandler<K>) => UnsubscribeFn;
-  off: <K extends ZapidEventName>(event: K, handler: ZapidEventHandler<K>) => void;
+  on: <K extends ZapindEventName>(event: K, handler: ZapindEventHandler<K>) => UnsubscribeFn;
+  once: <K extends ZapindEventName>(event: K, handler: ZapindEventHandler<K>) => UnsubscribeFn;
+  off: <K extends ZapindEventName>(event: K, handler: ZapindEventHandler<K>) => void;
   start: (options?: { retryOnClose?: boolean }) => void;
   stop: () => void;
 }
 
 /**
- * Zapid — Developer-friendly, contextual, type-safe Zalo SDK.
+ * Zapind — Developer-friendly, contextual, type-safe Zalo SDK.
  */
-export class Zapid {
+export class Zapind {
   public readonly account: AccountService;
   public readonly users: UsersService;
   public readonly contacts: ContactsService;
@@ -115,7 +115,7 @@ export class Zapid {
   private sessionInfo: SessionInfo | null = null;
   private listening = false;
 
-  constructor(options: ZapidOptions = {}) {
+  constructor(options: ZapindOptions = {}) {
     const timeoutMs = options.timeoutMs ?? 15_000;
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
       throw new ValidationError('timeoutMs must be a positive number');
@@ -408,15 +408,15 @@ export class Zapid {
 
   // --- Event System ---
 
-  public on<K extends ZapidEventName>(event: K, handler: ZapidEventHandler<K>): UnsubscribeFn {
+  public on<K extends ZapindEventName>(event: K, handler: ZapindEventHandler<K>): UnsubscribeFn {
     return this.eventBus.on(event, handler);
   }
 
-  public once<K extends ZapidEventName>(event: K, handler: ZapidEventHandler<K>): UnsubscribeFn {
+  public once<K extends ZapindEventName>(event: K, handler: ZapindEventHandler<K>): UnsubscribeFn {
     return this.eventBus.once(event, handler);
   }
 
-  public off<K extends ZapidEventName>(event: K, handler: ZapidEventHandler<K>): void {
+  public off<K extends ZapindEventName>(event: K, handler: ZapindEventHandler<K>): void {
     this.eventBus.off(event, handler);
   }
 

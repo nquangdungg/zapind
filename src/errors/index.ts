@@ -1,5 +1,5 @@
-export type ZapidErrorCode =
-  | 'ZAPID_ERROR'
+export type ZapindErrorCode =
+  | 'ZAPIND_ERROR'
   | 'AUTHENTICATION_ERROR'
   | 'SESSION_ERROR'
   | 'NETWORK_ERROR'
@@ -9,26 +9,26 @@ export type ZapidErrorCode =
   | 'NOT_FOUND_ERROR'
   | 'API_ERROR';
 
-export interface ZapidErrorOptions {
-  readonly code?: ZapidErrorCode;
+export interface ZapindErrorOptions {
+  readonly code?: ZapindErrorCode;
   readonly retryable?: boolean;
   readonly rawCode?: number | null;
   readonly cause?: unknown;
 }
 
 /**
- * Base error class for all errors thrown by Zapid.
+ * Base error class for all errors thrown by Zapind.
  */
-export class ZapidError extends Error {
-  public readonly code: ZapidErrorCode;
+export class ZapindError extends Error {
+  public readonly code: ZapindErrorCode;
   public readonly retryable: boolean;
   public readonly rawCode: number | null;
   public override readonly cause?: unknown;
 
-  constructor(message: string, options: ZapidErrorOptions = {}) {
+  constructor(message: string, options: ZapindErrorOptions = {}) {
     super(message);
     this.name = new.target.name;
-    this.code = options.code ?? 'ZAPID_ERROR';
+    this.code = options.code ?? 'ZAPIND_ERROR';
     this.retryable = options.retryable ?? false;
     this.rawCode = options.rawCode ?? null;
     if (options.cause !== undefined) {
@@ -38,25 +38,25 @@ export class ZapidError extends Error {
   }
 }
 
-export class AuthenticationError extends ZapidError {
+export class AuthenticationError extends ZapindError {
   constructor(message = 'Not authenticated with Zalo', cause?: unknown, rawCode: number | null = null) {
     super(message, { code: 'AUTHENTICATION_ERROR', retryable: false, cause, rawCode });
   }
 }
 
-export class SessionError extends ZapidError {
+export class SessionError extends ZapindError {
   constructor(message = 'Session is invalid, expired, or could not be accessed', cause?: unknown, rawCode: number | null = null) {
     super(message, { code: 'SESSION_ERROR', retryable: false, cause, rawCode });
   }
 }
 
-export class NetworkError extends ZapidError {
+export class NetworkError extends ZapindError {
   constructor(message = 'Network error communicating with Zalo', cause?: unknown) {
     super(message, { code: 'NETWORK_ERROR', retryable: true, cause });
   }
 }
 
-export class RateLimitError extends ZapidError {
+export class RateLimitError extends ZapindError {
   public readonly retryAfterMs: number | null;
 
   constructor(message = 'Rate limit exceeded', retryAfterMs: number | null = null, cause?: unknown) {
@@ -65,25 +65,25 @@ export class RateLimitError extends ZapidError {
   }
 }
 
-export class ValidationError extends ZapidError {
+export class ValidationError extends ZapindError {
   constructor(message: string, cause?: unknown) {
     super(message, { code: 'VALIDATION_ERROR', retryable: false, cause });
   }
 }
 
-export class PermissionError extends ZapidError {
+export class PermissionError extends ZapindError {
   constructor(message = 'Insufficient permissions for this operation', cause?: unknown, rawCode: number | null = null) {
     super(message, { code: 'PERMISSION_ERROR', retryable: false, cause, rawCode });
   }
 }
 
-export class NotFoundError extends ZapidError {
+export class NotFoundError extends ZapindError {
   constructor(message = 'Requested resource was not found', cause?: unknown, rawCode: number | null = null) {
     super(message, { code: 'NOT_FOUND_ERROR', retryable: false, cause, rawCode });
   }
 }
 
-export class APIError extends ZapidError {
+export class APIError extends ZapindError {
   constructor(message: string, rawCode: number | null = null, cause?: unknown, retryable = false) {
     super(message, { code: 'API_ERROR', retryable, rawCode, cause });
   }
@@ -110,10 +110,10 @@ const NETWORK_CODES = new Set([
 ]);
 
 /**
- * Normalizes any error thrown by the underlying transport into a typed ZapidError.
+ * Normalizes any error thrown by the underlying transport into a typed ZapindError.
  */
-export function normalizeError(err: unknown, fallbackMessage = 'Unexpected Zalo API error'): ZapidError {
-  if (err instanceof ZapidError) return err;
+export function normalizeError(err: unknown, fallbackMessage = 'Unexpected Zalo API error'): ZapindError {
+  if (err instanceof ZapindError) return err;
 
   const e = (typeof err === 'object' && err !== null ? err : {}) as ErrorLike;
   const name = typeof e.name === 'string' ? e.name : '';
@@ -132,7 +132,7 @@ export function normalizeError(err: unknown, fallbackMessage = 'Unexpected Zalo 
   }
   if (name === 'ZaloApiMissingImageMetadataGetter') {
     return new ValidationError(
-      'Uploading local image files requires an imageMetadataGetter in Zapid options (or pass Buffer with width/height).',
+      'Uploading local image files requires an imageMetadataGetter in Zapind options (or pass Buffer with width/height).',
       err,
     );
   }
