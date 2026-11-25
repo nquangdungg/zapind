@@ -261,4 +261,4 @@ const polls = await raw.getPollDetail("poll-id");
 
 ## License
 
-MIT
+GNU GENERAL PUBLIC LICENSE v3
