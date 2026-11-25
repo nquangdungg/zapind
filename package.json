@@ -48,7 +48,7 @@
     "zca-js",
     "typescript"
   ],
-  "license": "GPL-3.0-only",
+  "license": "LGPL-3.0-only",
   "dependencies": {
     "zca-js": "^2.4.0"
   },

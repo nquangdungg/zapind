@@ -261,10 +261,10 @@ const polls = await raw.getPollDetail("poll-id");
 
 ## License
 
-GNU GENERAL PUBLIC LICENSE v3
+GNU LESSER GENERAL PUBLIC LICENSE v3
 
 ## More
 This project is based on zca-js,
 originally licensed under the MIT License.
 
-Zapind is distributed under the GNU GPL v3.0.
+Zapind is distributed under the LGPL v3.0.
