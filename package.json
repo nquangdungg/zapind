@@ -1,0 +1,65 @@
+{
+  "name": "zapid",
+  "version": "0.1.0",
+  "description": "Developer-friendly, type-safe, contextual Zalo SDK built on top of zca-js.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nquangdungg/zapid.git"
+  },
+  "homepage": "https://github.com/nquangdungg/zapid#readme",
+  "bugs": {
+    "url": "https://github.com/nquangdungg/zapid/issues"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests",
+    "test": "vitest run tests/unit tests/integration",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:live": "vitest run tests/live",
+    "bench": "npx tsx tests/benchmark.ts",
+    "build": "tsup",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run build"
+  },
+  "keywords": [
+    "zalo",
+    "zapid",
+    "zalo-sdk",
+    "zalo-bot",
+    "zca-js",
+    "typescript"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "zca-js": "^2.4.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.20.0",
+    "@types/node": "^22.13.0",
+    "eslint": "^9.20.0",
+    "tsup": "^8.4.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.24.0",
+    "vitest": "^3.0.6"
+  }
+}
