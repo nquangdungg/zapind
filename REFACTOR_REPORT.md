@@ -1,7 +1,7 @@
 # REFACTOR_REPORT.md — `zca-js` → `zapind`
 
 > **Package:** `zapind@0.1.0`
-> **License:** `GPL-3.0-only` (based on `zca-js`, originally MIT)
+> **License:** `LGPL-3.0-only` (based on `zca-js`, originally MIT)
 > **Repository:** `https://github.com/nquangdungg/zapind` (local: `d:\Documents\GitHub\zapind`)
 > **Underlying Engine:** `zca-js@^2.4.0` (audited from clone at `C:\Users\nquan\Desktop\zapind`)
 
