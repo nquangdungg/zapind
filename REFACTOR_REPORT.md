@@ -1,6 +1,7 @@
 # REFACTOR_REPORT.md — `zca-js` → `zapid`
 
 > **Package:** `zapid@0.1.0`
+> **License:** `GPL-3.0-only` (based on `zca-js`, originally MIT)
 > **Repository:** `https://github.com/nquangdungg/zapid` (local: `d:\Documents\GitHub\zapid`)
 > **Underlying Engine:** `zca-js@^2.4.0` (audited from clone at `C:\Users\nquan\Desktop\zapid`)
 
