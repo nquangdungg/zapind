@@ -24,6 +24,7 @@ import {
   ThreadType,
   User,
   type AccountSettings,
+  type GetMessagesOptions,
   type GroupMember,
   type GroupSummary,
   type LastOnlineInfo,
@@ -514,19 +515,34 @@ export class ConversationsService {
     return new Conversation(resolved.threadId, resolved.threadType, this.deps.actions);
   }
 
-  public async getMessages(conversationId: string, count?: number): Promise<MessagePage> {
+  public async getMessages(
+    conversationId: string,
+    options?: number | GetMessagesOptions,
+  ): Promise<MessagePage> {
     ensureConnected(this.deps.transport);
     const id = requireNonEmpty(conversationId, 'conversationId');
-    assertOptionalPositiveInt(count, 'count');
+    const normalized: GetMessagesOptions =
+      typeof options === 'number' ? { count: options } : (options ?? {});
+    assertOptionalPositiveInt(normalized.count, 'count');
+
     const res = await this.deps.executor.execute(
-      () => this.deps.transport.getGroupChatHistory(id, count),
+      () => this.deps.transport.getGroupChatHistory(id, normalized),
       { operation: 'conversations.getMessages', idempotent: true },
     );
     return {
       items: res.messages.map((raw) => new Message(mapMessageData(raw), this.deps.actions)),
       hasMore: res.hasMore,
       nextCursor: res.nextCursor,
+      isOld: res.isOld,
     };
+  }
+
+  public requestOldMessages(threadType: ThreadType, lastMsgId?: string | null): void {
+    ensureConnected(this.deps.transport);
+    if (typeof this.deps.transport.requestOldMessages !== 'function') {
+      throw new ValidationError('Current transport does not support requestOldMessages');
+    }
+    this.deps.transport.requestOldMessages(threadType, lastMsgId ?? null);
   }
 
   public async getPinned(): Promise<PinnedConversations> {

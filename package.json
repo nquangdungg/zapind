@@ -1,6 +1,6 @@
 {
   "name": "zapind",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Developer-friendly, type-safe, contextual Zalo SDK built on top of zca-js.",
   "type": "module",
   "sideEffects": false,
@@ -17,6 +17,7 @@
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "repository": {

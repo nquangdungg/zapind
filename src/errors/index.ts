@@ -94,6 +94,8 @@ interface ErrorLike {
   message?: string;
   code?: string | number | null;
   status?: number;
+  statusCode?: number;
+  response?: { status?: number };
   retryAfterMs?: number;
 }
 
@@ -127,6 +129,22 @@ export function normalizeError(err: unknown, fallbackMessage = 'Unexpected Zalo 
   const rawStringCode = typeof e.code === 'string' ? e.code : '';
   const lower = message.toLowerCase();
 
+  // Extract HTTP status from explicit properties or message ("Request failed with status code 429")
+  let httpStatus: number | null =
+    typeof e.status === 'number'
+      ? e.status
+      : typeof e.statusCode === 'number'
+        ? e.statusCode
+        : typeof e.response?.status === 'number'
+          ? e.response.status
+          : null;
+  if (httpStatus === null) {
+    const statusMatch = message.match(/status code\s+(\d{3})/i);
+    if (statusMatch) {
+      httpStatus = Number(statusMatch[1]);
+    }
+  }
+
   if (name === 'ZaloApiLoginQRDeclined' || name === 'ZaloApiLoginQRAborted') {
     return new AuthenticationError(message, err, rawNumericCode);
   }
@@ -136,11 +154,11 @@ export function normalizeError(err: unknown, fallbackMessage = 'Unexpected Zalo 
       err,
     );
   }
-  if (e.status === 429 || lower.includes('rate limit') || lower.includes('too many requests')) {
+  if (httpStatus === 429 || lower.includes('rate limit') || lower.includes('too many requests')) {
     return new RateLimitError(message, typeof e.retryAfterMs === 'number' ? e.retryAfterMs : null, err);
   }
   if (
-    e.status === 401 ||
+    httpStatus === 401 ||
     lower.includes('session expired') ||
     lower.includes('invalid cookie') ||
     lower.includes('not logged in') ||
@@ -148,10 +166,10 @@ export function normalizeError(err: unknown, fallbackMessage = 'Unexpected Zalo 
   ) {
     return new SessionError(message, err, rawNumericCode);
   }
-  if (e.status === 403 || lower.includes('permission') || lower.includes('forbidden')) {
+  if (httpStatus === 403 || lower.includes('permission') || lower.includes('forbidden')) {
     return new PermissionError(message, err, rawNumericCode);
   }
-  if (e.status === 404 || lower.includes('not found')) {
+  if (httpStatus === 404 || lower.includes('not found')) {
     return new NotFoundError(message, err, rawNumericCode);
   }
   if (
@@ -164,6 +182,6 @@ export function normalizeError(err: unknown, fallbackMessage = 'Unexpected Zalo 
     return new NetworkError(message, err);
   }
 
-  const retryable = typeof e.status === 'number' && e.status >= 500;
+  const retryable = httpStatus !== null && httpStatus >= 500;
   return new APIError(message, rawNumericCode, err, retryable);
 }

@@ -73,6 +73,7 @@ function normalizeQRImage(raw: string): { imageBase64: string; imageDataUrl: str
 export class ZcaTransport implements TransportAdapter {
   private api: API | null = null;
   private listenerAttached = false;
+  private boundListeners: Array<{ event: string; fn: (...args: unknown[]) => void }> = [];
 
   constructor(private readonly options: ZcaTransportOptions = {}) {}
 
@@ -510,14 +511,45 @@ export class ZcaTransport implements TransportAdapter {
 
   public async getGroupChatHistory(
     groupId: string,
-    count?: number,
-  ): Promise<{ messages: RawMessageEnvelope[]; hasMore: boolean; nextCursor: string | null }> {
-    const res = await this.requireApi().getGroupChatHistory(groupId, count);
-    return {
-      messages: (Array.isArray(res?.groupMsgs) ? res.groupMsgs : []) as unknown as RawMessageEnvelope[],
-      hasMore: res?.more === 1,
-      nextCursor: res?.lastActionId ? String(res.lastActionId) : null,
-    };
+    options?: { count?: number; cursor?: string | null; isOld?: boolean },
+  ): Promise<{ messages: RawMessageEnvelope[]; hasMore: boolean; nextCursor: string | null; isOld?: boolean }> {
+    const api = this.requireApi();
+    try {
+      const res = await api.getCloudMessage(
+        groupId,
+        options?.cursor ? String(options.cursor) : undefined,
+        { isOld: Boolean(options?.isOld) },
+      );
+      let msgs = (Array.isArray(res?.groupMsgs) ? res.groupMsgs : []) as unknown as RawMessageEnvelope[];
+      if (options?.count !== undefined && options.count > 0 && msgs.length > options.count) {
+        msgs = msgs.slice(-options.count);
+      }
+      const rawCursor = res?.lastMsgId !== undefined && res.lastMsgId !== null ? String(res.lastMsgId) : '';
+      return {
+        messages: msgs,
+        hasMore: Boolean(res?.hasMore),
+        nextCursor: rawCursor && rawCursor !== '0' ? rawCursor : null,
+        isOld: Boolean(res?.isOld),
+      };
+    } catch (err) {
+      // Zalo Cloud Message error code -69 means there are no more older messages to page
+      const code = typeof err === 'object' && err !== null && 'code' in err ? (err as { code?: unknown }).code : null;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (code === -69 || msg.includes('-69')) {
+        return {
+          messages: [],
+          hasMore: false,
+          nextCursor: null,
+          isOld: Boolean(options?.isOld),
+        };
+      }
+      throw err;
+    }
+  }
+
+  public requestOldMessages(threadType: ThreadType, lastMsgId?: string | null): void {
+    const api = this.requireApi();
+    api.listener.requestOldMessages(toZcaType(threadType), lastMsgId ?? null);
   }
 
   public async undoMessage(message: Message): Promise<void> {
@@ -590,6 +622,29 @@ export class ZcaTransport implements TransportAdapter {
     );
   }
 
+  private attachListener(api: API, event: string, fn: (...args: unknown[]) => void): void {
+    (api.listener as unknown as { on(e: string, h: (...a: unknown[]) => void): void }).on(event, fn);
+    this.boundListeners.push({ event, fn });
+  }
+
+  private detachListeners(): void {
+    const listener = this.api?.listener as unknown as
+      | { off?(e: string, h: (...a: unknown[]) => void): void; removeListener?(e: string, h: (...a: unknown[]) => void): void }
+      | undefined;
+    if (listener) {
+      for (const { event, fn } of this.boundListeners) {
+        try {
+          if (typeof listener.off === 'function') listener.off(event, fn);
+          else if (typeof listener.removeListener === 'function') listener.removeListener(event, fn);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    this.boundListeners = [];
+    this.listenerAttached = false;
+  }
+
   public startListening(
     handlers: TransportListenerHandlers,
     options?: { retryOnClose?: boolean },
@@ -598,11 +653,26 @@ export class ZcaTransport implements TransportAdapter {
     if (this.listenerAttached) return;
     this.listenerAttached = true;
 
-    api.listener.on('message', (msg) => {
-      handlers.onMessage(msg as unknown as RawMessageEnvelope);
+    const retryOnClose = options?.retryOnClose ?? false;
+
+    this.attachListener(api, 'message', (msg) => {
+      handlers.onMessage(msg as RawMessageEnvelope);
     });
 
-    api.listener.on('reaction', (r) => {
+    this.attachListener(api, 'old_messages', (msgs, threadType) => {
+      if (!handlers.onOldMessages || !Array.isArray(msgs)) return;
+      const mappedType =
+        threadType === ZcaThreadType.Group ? ThreadType.Group : ThreadType.User;
+      handlers.onOldMessages(msgs as RawMessageEnvelope[], mappedType);
+    });
+
+    this.attachListener(api, 'reaction', (raw) => {
+      const r = raw as {
+        threadId?: string;
+        isGroup?: boolean;
+        isSelf?: boolean;
+        data?: { ts?: string | number; uidFrom?: string; content?: { rIcon?: string; rMsg?: Array<{ gMsgID?: string | number }> } };
+      };
       const ts = Number(r.data?.ts ?? Date.now());
       handlers.onReaction({
         threadId: String(r.threadId ?? ''),
@@ -617,8 +687,9 @@ export class ZcaTransport implements TransportAdapter {
       });
     });
 
-    api.listener.on('group_event', (evt) => {
-      const data = (evt.data ?? {}) as Record<string, unknown>;
+    this.attachListener(api, 'group_event', (raw) => {
+      const evt = raw as { threadId?: string; type?: string; data?: Record<string, unknown> };
+      const data = evt.data ?? {};
       handlers.onGroupUpdate({
         groupId: String(evt.threadId ?? data.groupId ?? ''),
         type: String(evt.type ?? 'unknown'),
@@ -630,8 +701,9 @@ export class ZcaTransport implements TransportAdapter {
       });
     });
 
-    api.listener.on('friend_event', (evt) => {
-      const data = (evt.data ?? {}) as Record<string, unknown>;
+    this.attachListener(api, 'friend_event', (raw) => {
+      const evt = raw as { threadId?: string; type?: string; data?: Record<string, unknown> };
+      const data = evt.data ?? {};
       handlers.onUserUpdate({
         userId: String(evt.threadId ?? data.fromUid ?? ''),
         type: String(evt.type ?? 'unknown'),
@@ -639,7 +711,8 @@ export class ZcaTransport implements TransportAdapter {
       });
     });
 
-    api.listener.on('typing', (t) => {
+    this.attachListener(api, 'typing', (raw) => {
+      const t = raw as { threadId?: string; type?: ZcaThreadType; isSelf?: boolean; data?: { uid?: string } };
       handlers.onTyping({
         threadId: String(t.threadId ?? ''),
         threadType: t.type === ZcaThreadType.Group ? ThreadType.Group : ThreadType.User,
@@ -648,19 +721,36 @@ export class ZcaTransport implements TransportAdapter {
       });
     });
 
-    api.listener.on('seen_messages', (list) => {
-      for (const item of list) {
-        const d = item.data as unknown as Record<string, unknown>;
+    this.attachListener(api, 'seen_messages', (rawList) => {
+      if (!Array.isArray(rawList)) return;
+      for (const rawItem of rawList) {
+        const item = rawItem as { threadId?: string; type?: ZcaThreadType; data?: Record<string, unknown> };
+        const d = item.data ?? {};
+        const rawMsgId = d.realMsgId ?? d.msgId;
+        let messageIds: string[] = [];
+        if (Array.isArray(rawMsgId)) {
+          messageIds = rawMsgId.map(String).filter(Boolean);
+        } else if (rawMsgId !== undefined && rawMsgId !== null && String(rawMsgId)) {
+          messageIds = [String(rawMsgId)];
+        } else if (Array.isArray(d.idTo)) {
+          messageIds = (d.idTo as string[]).map(String).filter(Boolean);
+        }
         handlers.onSeen({
           threadId: String(item.threadId ?? ''),
           threadType: item.type === ZcaThreadType.Group ? ThreadType.Group : ThreadType.User,
-          messageIds: Array.isArray(d?.idTo) ? (d.idTo as string[]).map(String) : [],
-          seenBy: Array.isArray(d?.seenUids) ? (d.seenUids as string[]).map(String) : [],
+          messageIds,
+          seenBy: Array.isArray(d.seenUids) ? (d.seenUids as string[]).map(String) : [],
         });
       }
     });
 
-    api.listener.on('undo', (u) => {
+    this.attachListener(api, 'undo', (raw) => {
+      const u = raw as {
+        threadId?: string;
+        isGroup?: boolean;
+        isSelf?: boolean;
+        data?: { uidFrom?: string; msgId?: string | number; cliMsgId?: string | number; content?: { globalMsgId?: string | number; cliMsgId?: string | number } };
+      };
       handlers.onUndo({
         threadId: String(u.threadId ?? ''),
         threadType: u.isGroup ? ThreadType.Group : ThreadType.User,
@@ -671,22 +761,33 @@ export class ZcaTransport implements TransportAdapter {
       });
     });
 
-    api.listener.on('connected', () => handlers.onConnected({ connected: true }));
-    api.listener.on('closed', (code, reason) =>
-      handlers.onDisconnected({ connected: false, code, reason }),
-    );
-    api.listener.on('error', (err) => handlers.onError(err));
+    this.attachListener(api, 'connected', () => handlers.onConnected({ connected: true }));
+    this.attachListener(api, 'closed', (code, reason) => {
+      if (!retryOnClose) {
+        this.detachListeners();
+      }
+      handlers.onDisconnected({
+        connected: false,
+        code: typeof code === 'number' ? code : undefined,
+        reason: typeof reason === 'string' ? reason : undefined,
+      });
+    });
+    this.attachListener(api, 'error', (err) => handlers.onError(err));
 
-    api.listener.start({ retryOnClose: options?.retryOnClose ?? false });
+    api.listener.start({ retryOnClose });
   }
 
   public stopListening(): void {
-    if (!this.api?.listener) return;
+    if (!this.api?.listener) {
+      this.boundListeners = [];
+      this.listenerAttached = false;
+      return;
+    }
+    this.detachListeners();
     try {
       this.api.listener.stop();
     } catch {
       // ignore
     }
-    this.listenerAttached = false;
   }
 }

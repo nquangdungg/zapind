@@ -80,6 +80,7 @@ export interface EventsNamespace {
   off: <K extends ZapindEventName>(event: K, handler: ZapindEventHandler<K>) => void;
   start: (options?: { retryOnClose?: boolean }) => void;
   stop: () => void;
+  requestOldMessages: (threadType: ThreadType, lastMsgId?: string | null) => void;
 }
 
 /**
@@ -195,7 +196,7 @@ export class Zapind {
       undoMessage: (msg) => this.messages.undo(msg),
       deleteMessage: (msg, onlyMe) => this.messages.delete(msg, onlyMe),
       markSeen: (msgs) => this.messages.markSeen(msgs),
-      getGroupMessages: (groupId, count) => this.conversations.getMessages(groupId, count),
+      getGroupMessages: (groupId, opts) => this.conversations.getMessages(groupId, opts),
       sendTyping: (id, type) => this.conversations.sendTyping(id, type),
       pinConversation: (id, pinned, type) => this.conversations.pin(id, pinned, type),
       muteConversation: (id, duration, type) => this.conversations.mute(id, duration, type),
@@ -236,6 +237,8 @@ export class Zapind {
       off: (e, h) => this.off(e, h),
       start: (opts) => this.startListening(opts),
       stop: () => this.stopListening(),
+      requestOldMessages: (threadType, lastMsgId) =>
+        this.conversations.requestOldMessages(threadType, lastMsgId),
     };
   }
 
@@ -281,16 +284,23 @@ export class Zapind {
           return await this.authenticateWithCredentials(stored.credentials);
         } catch (err) {
           const normalized = normalizeError(err, 'Saved session expired or invalid');
-          this.logger.warn('Saved session restore failed, falling back to QR login', {
+          this.logger.warn('Saved session restore failed', {
             code: normalized.code,
+            sessionOnly: Boolean(options.sessionOnly),
           });
           this.eventBus.emit('auth.required', {
             reason: 'session_expired',
             error: normalized,
           });
+          if (options.sessionOnly) {
+            throw normalized;
+          }
         }
       } else {
         this.eventBus.emit('auth.required', { reason: 'no_session' });
+        if (options.sessionOnly) {
+          throw new SessionError('No saved Zalo session found');
+        }
       }
     }
 
@@ -467,6 +477,18 @@ export class Zapind {
 
           if (data.isSelf && !this.selfListen) return;
           this.eventBus.emit('message', new Message(data, this.modelActions));
+        },
+        onOldMessages: (raws, threadType) => {
+          const mapped: Message[] = [];
+          for (const raw of raws) {
+            const data = mapMessageData({ ...raw, type: raw.type ?? threadType });
+            if (data.threadType === ThreadType.Group) this.registry.registerGroup(data.threadId);
+            else this.registry.registerUser(data.threadId);
+            mapped.push(new Message(data, this.modelActions));
+          }
+          if (mapped.length > 0) {
+            this.eventBus.emit('old_messages', { messages: mapped, threadType });
+          }
         },
         onReaction: (evt) => {
           if (evt.isSelf && !this.selfListen) return;

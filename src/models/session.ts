@@ -63,6 +63,8 @@ export interface LoginOptions {
   readonly language?: string;
   /** If true, skips restoring saved session and starts a fresh QR login. */
   readonly forceQR?: boolean;
+  /** If true, only attempts restoring a saved session and throws SessionError instead of falling back to QR login. */
+  readonly sessionOnly?: boolean;
 }
 
 export interface LogoutOptions {

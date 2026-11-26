@@ -12,7 +12,7 @@ Zapind wraps `zca-js` with a clean domain-oriented API, automatic `threadType` r
 npm install zapind
 ```
 
-Requires **Node.js >= 20**.
+Current npm release: **`v1.0.1`**. Requires **Node.js >= 20**.
 
 ---
 
@@ -63,6 +63,9 @@ const session = await client.login({
   onQRCode: ({ imageDataUrl }) => console.log("QR Data URL:", imageDataUrl),
   onScanned: ({ displayName }) => console.log("Scanned by:", displayName),
 });
+
+// Non-blocking restore-only mode (throws SessionError instead of starting QR login):
+const restored = await client.login({ sessionOnly: true });
 
 console.log("Logged in as:", session.accountId, session.displayName);
 ```
@@ -132,7 +135,15 @@ await group.send("Hello everyone!");
 await group.rename("Engineering Team");
 await group.addMembers(["uid-1", "uid-2"]);
 
-const history = await group.getMessages(20);
+// Fetch latest group cloud history (powered by Zalo Cloud Message service)
+const page1 = await group.getMessages({ count: 50 });
+if (page1.hasMore && page1.nextCursor) {
+  const page2 = await group.getMessages({
+    count: 50,
+    cursor: page1.nextCursor,
+    isOld: page1.isOld,
+  });
+}
 const members = await client.groups.getMembers(group.memberIds);
 ```
 
@@ -174,10 +185,18 @@ const unsubscribe = client.on("message", (msg) => {
   console.log(msg.text, msg.sender.id, msg.timestamp);
 });
 
+client.on("old_messages", ({ messages, threadType }) => {
+  console.log(`Synced ${messages.length} historical messages for threadType=${threadType}`);
+});
 client.on("reaction", (evt) => console.log("Reaction:", evt.icon));
 client.on("group.update", (evt) => console.log("Group update:", evt.groupId, evt.type));
 client.on("user.update", (evt) => console.log("User update:", evt.userId, evt.type));
-client.on("connected", () => console.log("Connected"));
+client.on("connected", () => {
+  console.log("Connected");
+  // Pull recent DM & Group history over the realtime WebSocket
+  client.conversations.requestOldMessages(ThreadType.User);
+  client.conversations.requestOldMessages(ThreadType.Group);
+});
 client.on("disconnected", ({ code }) => console.log("Disconnected:", code));
 client.on("error", (err) => console.error("Error:", err.code, err.message));
 

@@ -99,6 +99,7 @@ export interface RawMessageEnvelope {
     mentions?: Array<{ uid?: string; pos?: number; len?: number }>;
     quote?: {
       ownerId?: string | number;
+      fromD?: string;
       cliMsgId?: string | number;
       globalMsgId?: string | number;
       ts?: string | number;
@@ -323,6 +324,7 @@ export function mapMessageData(raw: RawMessageEnvelope): MessageData {
   if (data.quote && typeof data.quote === 'object') {
     replyTo = {
       ownerId: String(data.quote.ownerId ?? ''),
+      senderName: data.quote.fromD || undefined,
       clientMsgId: String(data.quote.cliMsgId ?? ''),
       globalMsgId: String(data.quote.globalMsgId ?? ''),
       text: String(data.quote.msg ?? ''),

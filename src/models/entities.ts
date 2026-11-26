@@ -1,3 +1,4 @@
+import { ValidationError } from '../errors/index.js';
 import { ThreadType, type Gender, type GroupType, type Reaction, type TextStyle, type Urgency } from './enums.js';
 
 export type MediaInput =
@@ -56,6 +57,7 @@ export interface MessageStyle {
 
 export interface MessageQuote {
   readonly ownerId: string;
+  readonly senderName?: string;
   readonly clientMsgId: string;
   readonly globalMsgId: string;
   readonly text: string;
@@ -94,10 +96,20 @@ export interface SendMessageReceipt {
   readonly attachmentMessageIds: readonly string[];
 }
 
+export interface GetMessagesOptions {
+  /** Maximum number of messages to return from the fetched page. */
+  readonly count?: number;
+  /** Pagination cursor (`nextCursor` from previous `MessagePage`). */
+  readonly cursor?: string | null;
+  /** Pass `isOld` from the previous `MessagePage` when paging older messages. */
+  readonly isOld?: boolean;
+}
+
 export interface MessagePage {
   readonly items: readonly Message[];
   readonly hasMore: boolean;
   readonly nextCursor: string | null;
+  readonly isOld?: boolean;
 }
 
 export interface MessageSenderRef {
@@ -186,7 +198,7 @@ export interface ModelActions {
   undoMessage(message: Message): Promise<void>;
   deleteMessage(message: Message, onlyMe?: boolean): Promise<void>;
   markSeen(messages: readonly Message[]): Promise<void>;
-  getGroupMessages(groupId: string, count?: number): Promise<MessagePage>;
+  getGroupMessages(groupId: string, options?: number | GetMessagesOptions): Promise<MessagePage>;
   sendTyping(threadId: string, threadType: ThreadType): Promise<void>;
   pinConversation(threadId: string, pinned: boolean, threadType: ThreadType): Promise<void>;
   muteConversation(threadId: string, durationSeconds: number, threadType: ThreadType): Promise<void>;
@@ -375,8 +387,8 @@ export class Group implements GroupData {
     return this.actions.sendMessage(this.id, content, ThreadType.Group);
   }
 
-  public getMessages(count?: number): Promise<MessagePage> {
-    return this.actions.getGroupMessages(this.id, count);
+  public getMessages(options?: number | GetMessagesOptions): Promise<MessagePage> {
+    return this.actions.getGroupMessages(this.id, options);
   }
 
   public addMembers(userIds: readonly string[]): Promise<void> {
@@ -420,8 +432,15 @@ export class Conversation {
     return this.actions.sendMessage(this.id, content, this.threadType);
   }
 
-  public getMessages(count?: number): Promise<MessagePage> {
-    return this.actions.getGroupMessages(this.id, count);
+  public getMessages(options?: number | GetMessagesOptions): Promise<MessagePage> {
+    if (this.threadType !== ThreadType.Group) {
+      return Promise.reject(
+        new ValidationError(
+          'Zalo cloud history REST API only supports group conversations. For direct messages, listen to the "old_messages" event and call conversations.requestOldMessages(ThreadType.User).',
+        ),
+      );
+    }
+    return this.actions.getGroupMessages(this.id, options);
   }
 
   public sendTyping(): Promise<void> {

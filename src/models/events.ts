@@ -60,8 +60,14 @@ export interface AuthRequiredEvent {
   readonly error?: ZapindError;
 }
 
+export interface OldMessagesEvent {
+  readonly messages: readonly Message[];
+  readonly threadType: ThreadType;
+}
+
 export interface ZapindEventMap {
   message: Message;
+  old_messages: OldMessagesEvent;
   reaction: ReactionEvent;
   'group.update': GroupUpdateEvent;
   'user.update': UserUpdateEvent;

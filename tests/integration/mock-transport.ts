@@ -203,9 +203,14 @@ export class MockTransport implements TransportAdapter {
     };
   }
 
+  public historyRequests: Array<{ groupId: string; options?: { count?: number; cursor?: string | null; isOld?: boolean } }> = [];
+  public oldMessageRequests: Array<{ threadType: ThreadType; lastMsgId: string | null }> = [];
+
   public async getGroupChatHistory(
     groupId: string,
-  ): Promise<{ messages: RawMessageEnvelope[]; hasMore: boolean; nextCursor: string | null }> {
+    options?: { count?: number; cursor?: string | null; isOld?: boolean },
+  ): Promise<{ messages: RawMessageEnvelope[]; hasMore: boolean; nextCursor: string | null; isOld?: boolean }> {
+    this.historyRequests.push({ groupId, options });
     return {
       messages: [
         {
@@ -213,20 +218,25 @@ export class MockTransport implements TransportAdapter {
           threadId: groupId,
           isSelf: false,
           data: {
-            msgId: 'm-1',
-            cliMsgId: 'c-1',
+            msgId: options?.cursor ? 'm-0' : 'm-1',
+            cliMsgId: options?.cursor ? 'c-0' : 'c-1',
             msgType: 'webchat',
             uidFrom: 'u-friend-1',
             idTo: groupId,
             dName: 'Friend 1',
-            ts: '1700000000000',
-            content: 'Hello from group',
+            ts: options?.cursor ? '1699999999000' : '1700000000000',
+            content: options?.cursor ? 'Older group msg' : 'Hello from group',
           },
         },
       ],
-      hasMore: false,
-      nextCursor: null,
+      hasMore: !options?.cursor,
+      nextCursor: options?.cursor ? null : 'm-1',
+      isOld: Boolean(options?.isOld),
     };
+  }
+
+  public requestOldMessages(threadType: ThreadType, lastMsgId: string | null = null): void {
+    this.oldMessageRequests.push({ threadType, lastMsgId });
   }
 
   public async undoMessage(): Promise<void> {}

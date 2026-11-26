@@ -40,6 +40,7 @@ export interface TransportQRCallbacks {
 
 export interface TransportListenerHandlers {
   onMessage: (raw: RawMessageEnvelope) => void;
+  onOldMessages?: (raws: readonly RawMessageEnvelope[], threadType: ThreadType) => void;
   onReaction: (evt: ReactionEvent) => void;
   onGroupUpdate: (evt: GroupUpdateEvent) => void;
   onUserUpdate: (evt: UserUpdateEvent) => void;
@@ -104,8 +105,9 @@ export interface TransportAdapter {
   ): Promise<SendMessageReceipt>;
   getGroupChatHistory(
     groupId: string,
-    count?: number,
-  ): Promise<{ messages: RawMessageEnvelope[]; hasMore: boolean; nextCursor: string | null }>;
+    options?: { count?: number; cursor?: string | null; isOld?: boolean },
+  ): Promise<{ messages: RawMessageEnvelope[]; hasMore: boolean; nextCursor: string | null; isOld?: boolean }>;
+  requestOldMessages?(threadType: ThreadType, lastMsgId?: string | null): void;
   undoMessage(message: Message): Promise<void>;
   deleteMessage(message: Message, onlyMe: boolean): Promise<void>;
   addReaction(message: Message, reaction: Reaction | string): Promise<void>;
