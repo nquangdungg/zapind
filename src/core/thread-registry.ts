@@ -1,9 +1,12 @@
 import { ThreadType } from '../models/enums.js';
 
 export interface ThreadTargetLike {
-  readonly id: string;
+  readonly id?: string;
+  readonly threadId?: string;
   readonly threadType?: ThreadType;
 }
+
+const MAX_KNOWN_USERS = 10_000;
 
 /**
  * Automatically resolves ThreadType (User vs Group) without blind guessing:
@@ -39,14 +42,18 @@ export class ThreadTypeRegistry {
   }
 
   public registerUser(userId: string): void {
-    if (!userId) return;
-    if (!this.groupIds.has(userId)) {
-      this.userIds.add(userId);
+    if (!userId || this.groupIds.has(userId)) return;
+    if (!this.userIds.has(userId) && this.userIds.size >= MAX_KNOWN_USERS) {
+      const oldest = this.userIds.values().next().value;
+      if (oldest !== undefined) this.userIds.delete(oldest);
     }
+    this.userIds.add(userId);
   }
 
   public extractId(target: string | ThreadTargetLike): string {
-    return typeof target === 'string' ? target.trim() : target.id.trim();
+    if (typeof target === 'string') return target.trim();
+    const raw = target.threadId ?? target.id ?? '';
+    return raw.trim();
   }
 
   public async resolve(

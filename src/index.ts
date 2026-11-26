@@ -91,3 +91,4 @@ export {
 } from './core/policies.js';
 
 export type { TransportAdapter } from './transport/adapter.js';
+export type { CacheLookupOptions } from './services/index.js';

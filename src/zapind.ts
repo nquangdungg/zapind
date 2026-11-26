@@ -121,7 +121,22 @@ export class Zapind {
       throw new ValidationError('timeoutMs must be a positive number');
     }
 
-    this.defaultQrTimeoutMs = options.qrTimeoutMs ?? 180_000;
+    const qrTimeoutMs = options.qrTimeoutMs ?? 180_000;
+    if (!Number.isFinite(qrTimeoutMs) || qrTimeoutMs <= 0) {
+      throw new ValidationError('qrTimeoutMs must be a positive number');
+    }
+
+    const cacheTtlMs = options.cacheTtlMs ?? 60_000;
+    if (!Number.isFinite(cacheTtlMs) || cacheTtlMs <= 0) {
+      throw new ValidationError('cacheTtlMs must be a positive number');
+    }
+
+    const maxCacheEntries = options.maxCacheEntries ?? 500;
+    if (!Number.isInteger(maxCacheEntries) || maxCacheEntries < 1) {
+      throw new ValidationError('maxCacheEntries must be a positive integer');
+    }
+
+    this.defaultQrTimeoutMs = qrTimeoutMs;
     this.selfListen = options.selfListen ?? false;
     this.defaultUserAgent = options.userAgent ?? DEFAULT_USER_AGENT;
     this.defaultLanguage = options.language ?? 'vi';
@@ -145,6 +160,16 @@ export class Zapind {
       baseDelayMs: options.retry?.baseDelayMs ?? 300,
       maxDelayMs: options.retry?.maxDelayMs ?? 5_000,
     };
+    if (!Number.isInteger(retryOptions.maxAttempts) || retryOptions.maxAttempts < 1) {
+      throw new ValidationError('retry.maxAttempts must be an integer >= 1');
+    }
+    if (!Number.isFinite(retryOptions.baseDelayMs) || retryOptions.baseDelayMs < 0) {
+      throw new ValidationError('retry.baseDelayMs must be >= 0');
+    }
+    if (!Number.isFinite(retryOptions.maxDelayMs) || retryOptions.maxDelayMs < retryOptions.baseDelayMs) {
+      throw new ValidationError('retry.maxDelayMs must be >= retry.baseDelayMs');
+    }
+
     const rateLimiter =
       options.rateLimit === false
         ? null
@@ -154,12 +179,12 @@ export class Zapind {
     this.eventBus = new EventBus(this.logger);
     this.registry = new ThreadTypeRegistry(options.cacheTtlMs ?? 5 * 60_000);
     this.userCache = new TTLCache<string, User>({
-      maxEntries: options.maxCacheEntries ?? 500,
-      defaultTtlMs: options.cacheTtlMs ?? 60_000,
+      maxEntries: maxCacheEntries,
+      defaultTtlMs: cacheTtlMs,
     });
     this.groupCache = new TTLCache<string, Group>({
       maxEntries: options.maxCacheEntries ?? 250,
-      defaultTtlMs: options.cacheTtlMs ?? 60_000,
+      defaultTtlMs: cacheTtlMs,
     });
     this.dedup = new InFlightDeduplicator();
 
@@ -171,11 +196,9 @@ export class Zapind {
       deleteMessage: (msg, onlyMe) => this.messages.delete(msg, onlyMe),
       markSeen: (msgs) => this.messages.markSeen(msgs),
       getGroupMessages: (groupId, count) => this.conversations.getMessages(groupId, count),
-      sendTyping: (id, type) => this.conversations.sendTyping({ id, threadType: type } as never),
-      pinConversation: (id, pinned, type) =>
-        this.conversations.pin({ id, threadType: type } as never, pinned),
-      muteConversation: (id, duration, type) =>
-        this.conversations.mute({ id, threadType: type } as never, duration),
+      sendTyping: (id, type) => this.conversations.sendTyping(id, type),
+      pinConversation: (id, pinned, type) => this.conversations.pin(id, pinned, type),
+      muteConversation: (id, duration, type) => this.conversations.mute(id, duration, type),
       sendFriendRequest: (uid, msg) => this.contacts.sendRequest(uid, msg),
       blockUser: (uid) => this.contacts.block(uid),
       unblockUser: (uid) => this.contacts.unblock(uid),
@@ -404,6 +427,14 @@ export class Zapind {
     if (options.clearSession ?? true) {
       await this.sessionStore.clear();
     }
+  }
+
+  /**
+   * Stops realtime listeners, disconnects, clears caches, and removes all registered event listeners.
+   */
+  public async destroy(options: LogoutOptions = { clearSession: false }): Promise<void> {
+    await this.logout(options);
+    this.eventBus.removeAllListeners();
   }
 
   // --- Event System ---

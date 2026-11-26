@@ -205,23 +205,25 @@ export class PolicyExecutor {
     const timeoutMs = options.timeoutMs ?? this.defaultTimeoutMs;
     const allowRetry = options.idempotent ?? true;
 
-    return withRetry(
-      async () => {
-        if (this.rateLimiter) await this.rateLimiter.acquire();
-        try {
-          return await withTimeout(fn, timeoutMs, options.operation);
-        } catch (err) {
-          const normalized = normalizeError(err, `Failed during ${options.operation}`);
-          this.logger.debug('Operation error', {
-            operation: options.operation,
-            code: normalized.code,
-            retryable: normalized.retryable,
-          });
-          throw normalized;
-        }
-      },
-      this.retryOptions,
-      allowRetry,
-    );
+    const runOnce = async (): Promise<T> => {
+      if (this.rateLimiter) await this.rateLimiter.acquire();
+      try {
+        return await withTimeout(fn, timeoutMs, options.operation);
+      } catch (err) {
+        const normalized = normalizeError(err, `Failed during ${options.operation}`);
+        this.logger.debug('Operation error', {
+          operation: options.operation,
+          code: normalized.code,
+          retryable: normalized.retryable,
+        });
+        throw normalized;
+      }
+    };
+
+    if (!allowRetry || this.retryOptions.maxAttempts <= 1) {
+      return runOnce();
+    }
+
+    return withRetry(runOnce, this.retryOptions, true);
   }
 }

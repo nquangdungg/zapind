@@ -246,8 +246,11 @@ export function mapGroupMember(raw: RawGroupMemberLike): GroupMember {
   };
 }
 
+const EMPTY_ATTACHMENTS: readonly Attachment[] = Object.freeze([]);
+const EMPTY_MENTIONS: readonly Mention[] = Object.freeze([]);
+
 function inferKind(msgType: string, rawType?: string): AttachmentKind {
-  const s = `${msgType} ${rawType ?? ''}`.toLowerCase();
+  const s = rawType ? `${msgType} ${rawType}`.toLowerCase() : msgType.toLowerCase();
   if (s.includes('photo') || s.includes('image')) return 'image';
   if (s.includes('video')) return 'video';
   if (s.includes('voice') || s.includes('audio')) return 'audio';
@@ -258,32 +261,63 @@ function inferKind(msgType: string, rawType?: string): AttachmentKind {
 }
 
 export function mapMessageData(raw: RawMessageEnvelope): MessageData {
-  const data = raw.data ?? {};
-  const msgType = String(data.msgType ?? 'webchat');
-  let text = '';
-  const attachments: Attachment[] = [];
-
-  if (typeof data.content === 'string') {
-    text = data.content;
-  } else if (data.content && typeof data.content === 'object') {
-    const obj = data.content as Record<string, unknown>;
-    text = typeof obj.title === 'string' ? obj.title : '';
-    attachments.push({
-      kind: inferKind(msgType, typeof obj.type === 'string' ? obj.type : undefined),
-      url: typeof obj.href === 'string' ? obj.href : undefined,
-      thumbnailUrl: typeof obj.thumb === 'string' ? obj.thumb : undefined,
-      title: text || undefined,
-      description: typeof obj.description === 'string' ? obj.description : undefined,
-    });
+  const data = raw.data;
+  if (!data) {
+    return {
+      id: '',
+      clientMsgId: '',
+      threadId: String(raw.threadId ?? ''),
+      threadType: raw.type === ThreadType.Group ? ThreadType.Group : ThreadType.User,
+      sender: { id: '' },
+      recipientId: '',
+      isSelf: Boolean(raw.isSelf),
+      msgType: 'webchat',
+      text: '',
+      attachments: EMPTY_ATTACHMENTS,
+      mentions: EMPTY_MENTIONS,
+      replyTo: undefined,
+      timestamp: new Date(0),
+      ttlMs: 0,
+      st: 0,
+      at: 0,
+      cmd: 0,
+    };
   }
 
-  const mentions: Mention[] = Array.isArray(data.mentions)
-    ? data.mentions.map((m) => ({
+  const msgType = typeof data.msgType === 'string' ? data.msgType : 'webchat';
+  let text = '';
+  let attachments: readonly Attachment[] = EMPTY_ATTACHMENTS;
+
+  const content = data.content;
+  if (typeof content === 'string') {
+    text = content;
+  } else if (content !== null && typeof content === 'object') {
+    const obj = content as Record<string, unknown>;
+    text = typeof obj.title === 'string' ? obj.title : '';
+    attachments = [
+      {
+        kind: inferKind(msgType, typeof obj.type === 'string' ? obj.type : undefined),
+        url: typeof obj.href === 'string' ? obj.href : undefined,
+        thumbnailUrl: typeof obj.thumb === 'string' ? obj.thumb : undefined,
+        title: text || undefined,
+        description: typeof obj.description === 'string' ? obj.description : undefined,
+      },
+    ];
+  }
+
+  let mentions: readonly Mention[] = EMPTY_MENTIONS;
+  if (Array.isArray(data.mentions) && data.mentions.length > 0) {
+    const mapped: Mention[] = new Array(data.mentions.length);
+    for (let i = 0; i < data.mentions.length; i++) {
+      const m = data.mentions[i]!;
+      mapped[i] = {
         userId: String(m.uid ?? ''),
         pos: typeof m.pos === 'number' ? m.pos : 0,
         len: typeof m.len === 'number' ? m.len : 0,
-      }))
-    : [];
+      };
+    }
+    mentions = mapped;
+  }
 
   let replyTo: MessageQuote | undefined;
   if (data.quote && typeof data.quote === 'object') {
@@ -297,15 +331,15 @@ export function mapMessageData(raw: RawMessageEnvelope): MessageData {
   }
 
   return {
-    id: String(data.msgId ?? ''),
-    clientMsgId: String(data.cliMsgId ?? ''),
+    id: data.msgId !== undefined ? String(data.msgId) : '',
+    clientMsgId: data.cliMsgId !== undefined ? String(data.cliMsgId) : '',
     threadId: String(raw.threadId ?? data.idTo ?? ''),
     threadType: raw.type === ThreadType.Group ? ThreadType.Group : ThreadType.User,
     sender: {
-      id: String(data.uidFrom ?? ''),
+      id: data.uidFrom !== undefined ? String(data.uidFrom) : '',
       name: data.dName || undefined,
     },
-    recipientId: String(data.idTo ?? ''),
+    recipientId: data.idTo !== undefined ? String(data.idTo) : '',
     isSelf: Boolean(raw.isSelf),
     msgType,
     text,

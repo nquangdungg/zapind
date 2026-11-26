@@ -36,19 +36,41 @@ export class EventBus {
     if (set.size === 0) this.listeners.delete(event);
   }
 
-  public emit<K extends ZapindEventName>(event: K, payload: ZapindEventMap[K]): void {
-    const set = this.listeners.get(event);
-    if (!set || set.size === 0) return;
-
-    for (const handler of [...set]) {
-      Promise.resolve()
-        .then(() => handler(payload))
-        .catch((err: unknown) => {
+  private invokeHandler<K extends ZapindEventName>(
+    event: K,
+    handler: ZapindEventHandler<ZapindEventName>,
+    payload: ZapindEventMap[K],
+  ): void {
+    try {
+      const result = handler(payload as never);
+      if (result && typeof (result as PromiseLike<void>).then === 'function') {
+        (result as Promise<void>).catch((err: unknown) => {
           this.logger.error('Event handler threw an error', {
             event,
             error: err instanceof Error ? err.message : String(err),
           });
         });
+      }
+    } catch (err: unknown) {
+      this.logger.error('Event handler threw an error', {
+        event,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  public emit<K extends ZapindEventName>(event: K, payload: ZapindEventMap[K]): void {
+    const set = this.listeners.get(event);
+    if (!set || set.size === 0) return;
+
+    if (set.size === 1) {
+      const single = set.values().next().value;
+      if (single) this.invokeHandler(event, single, payload);
+      return;
+    }
+
+    for (const handler of [...set]) {
+      this.invokeHandler(event, handler, payload);
     }
   }
 

@@ -4,6 +4,7 @@ import {
   MemorySessionStore,
   Reaction,
   ThreadType,
+  ValidationError,
   Zapind,
   noopLogger,
 } from '../../src/index.js';
@@ -154,5 +155,39 @@ describe('Zapind end-to-end integration (MockTransport)', () => {
     // clientB remains completely unaffected
     expect(clientB.isAuthenticated()).toBe(true);
     expect(clientB.account.getOwnId()).toBe('bot-B');
+  });
+
+  it('serves cached entries in getMany, validates options/inputs, and cleans up on destroy()', async () => {
+    expect(() => new Zapind({ timeoutMs: 0 })).toThrow(ValidationError);
+    expect(() => new Zapind({ qrTimeoutMs: -1 })).toThrow(ValidationError);
+    expect(() => new Zapind({ cacheTtlMs: 0 })).toThrow(ValidationError);
+    expect(() => new Zapind({ maxCacheEntries: 0 })).toThrow(ValidationError);
+    expect(() => new Zapind({ retry: { maxAttempts: 0 } })).toThrow(ValidationError);
+
+    const transport = new MockTransport();
+    const client = new Zapind({ transport, logger: noopLogger, rateLimit: false });
+    await client.login();
+
+    await expect(client.contacts.block('   ')).rejects.toBeInstanceOf(ValidationError);
+    await expect(client.contacts.list({ count: 0 })).rejects.toBeInstanceOf(ValidationError);
+
+    // Warm u-1 in cache, then call getMany(['u-1', 'u-1', 'u-2']) -> only fetches missing ['u-2']
+    await client.users.get('u-1');
+    expect(transport.userInfoCalls).toBe(1);
+
+    const many = await client.users.getMany(['u-1', 'u-1', 'u-2']);
+    expect(Object.keys(many).sort()).toEqual(['u-1', 'u-2']);
+    expect(transport.userInfoCalls).toBe(2);
+
+    // Calling getMany again with all cached -> 0 extra network calls
+    await client.users.getMany(['u-1', 'u-2']);
+    expect(transport.userInfoCalls).toBe(2);
+
+    // destroy() removes all listeners and disconnects
+    const onMsg = vi.fn();
+    client.on('message', onMsg);
+    client.startListening();
+    await client.destroy();
+    expect(client.isAuthenticated()).toBe(false);
   });
 });

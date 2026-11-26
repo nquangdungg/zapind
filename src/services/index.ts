@@ -52,10 +52,64 @@ export interface ServiceDeps {
   dedup: InFlightDeduplicator;
 }
 
+export interface CacheLookupOptions {
+  readonly skipCache?: boolean;
+}
+
 function ensureConnected(transport: TransportAdapter): void {
   if (!transport.isConnected()) {
-    throw new AuthenticationError();
+    throw new AuthenticationError(
+      'Zapind client is not authenticated. Call await client.login() first.',
+    );
   }
+}
+
+function requireNonEmpty(value: string, fieldName: string): string {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (!trimmed) {
+    throw new ValidationError(`${fieldName} must be a non-empty string`);
+  }
+  return trimmed;
+}
+
+function requireUniqueNonEmptyIds(values: readonly string[], fieldName: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of values) {
+    const trimmed = typeof v === 'string' ? v.trim() : '';
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      out.push(trimmed);
+    }
+  }
+  if (out.length === 0) {
+    throw new ValidationError(`${fieldName} must contain at least one non-empty ID`);
+  }
+  return out;
+}
+
+function assertOptionalPositiveInt(value: number | undefined, fieldName: string): void {
+  if (value !== undefined && (!Number.isInteger(value) || value <= 0)) {
+    throw new ValidationError(`${fieldName} must be a positive integer`);
+  }
+}
+
+async function resolveThreadTarget(
+  deps: ServiceDeps,
+  target: ThreadTarget,
+  explicitType?: ThreadType,
+): Promise<{ threadId: string; threadType: ThreadType }> {
+  const resolved = await deps.registry.resolve(target, explicitType, async () => {
+    const map = await deps.executor.execute(() => deps.transport.getAllGroups(), {
+      operation: 'registry.fetchGroupIds',
+      idempotent: true,
+    });
+    return Object.keys(map);
+  });
+  if (!resolved.threadId) {
+    throw new ValidationError('Target threadId must be a non-empty string');
+  }
+  return resolved;
 }
 
 export class AccountService {
@@ -83,11 +137,11 @@ export class AccountService {
     gender: 'male' | 'female';
   }): Promise<void> {
     ensureConnected(this.deps.transport);
-    if (!patch.name.trim()) throw new ValidationError('name must not be empty');
+    const name = requireNonEmpty(patch.name, 'name');
     await this.deps.executor.execute(
       () =>
         this.deps.transport.updateProfile({
-          name: patch.name.trim(),
+          name,
           dob: patch.dob,
           gender: patch.gender === 'male' ? 0 : 1,
         }),
@@ -115,10 +169,9 @@ export class AccountService {
 export class UsersService {
   constructor(private readonly deps: ServiceDeps) {}
 
-  public async get(userId: string, options?: { skipCache?: boolean }): Promise<User | null> {
+  public async get(userId: string, options?: CacheLookupOptions): Promise<User | null> {
     ensureConnected(this.deps.transport);
-    const id = userId.trim();
-    if (!id) throw new ValidationError('userId must be a non-empty string');
+    const id = requireNonEmpty(userId, 'userId');
 
     if (!options?.skipCache) {
       const cached = this.deps.userCache.get(id);
@@ -139,16 +192,32 @@ export class UsersService {
     });
   }
 
-  public async getMany(userIds: readonly string[]): Promise<Record<string, User>> {
+  public async getMany(
+    userIds: readonly string[],
+    options?: CacheLookupOptions,
+  ): Promise<Record<string, User>> {
     ensureConnected(this.deps.transport);
-    const ids = userIds.map((u) => u.trim()).filter(Boolean);
-    if (ids.length === 0) throw new ValidationError('userIds must not be empty');
+    const ids = requireUniqueNonEmptyIds(userIds, 'userIds');
+    const out: Record<string, User> = {};
+    const missing: string[] = [];
 
-    const rawMap = await this.deps.executor.execute(() => this.deps.transport.getUserInfo(ids), {
+    for (const id of ids) {
+      const cached = options?.skipCache ? undefined : this.deps.userCache.get(id);
+      if (cached) {
+        out[id] = cached;
+      } else {
+        missing.push(id);
+      }
+    }
+
+    if (missing.length === 0) {
+      return out;
+    }
+
+    const rawMap = await this.deps.executor.execute(() => this.deps.transport.getUserInfo(missing), {
       operation: 'users.getMany',
       idempotent: true,
     });
-    const out: Record<string, User> = {};
     for (const [id, raw] of Object.entries(rawMap)) {
       const user = new User(mapUserData(raw), this.deps.actions);
       this.deps.registry.registerUser(user.id);
@@ -160,8 +229,7 @@ export class UsersService {
 
   public async findByPhone(phoneNumber: string): Promise<User | null> {
     ensureConnected(this.deps.transport);
-    const phone = phoneNumber.trim();
-    if (!phone) throw new ValidationError('phoneNumber must be a non-empty string');
+    const phone = requireNonEmpty(phoneNumber, 'phoneNumber');
 
     const raw = await this.deps.executor.execute(() => this.deps.transport.findUserByPhone(phone), {
       operation: 'users.findByPhone',
@@ -176,8 +244,7 @@ export class UsersService {
 
   public async findByUsername(username: string): Promise<User | null> {
     ensureConnected(this.deps.transport);
-    const cleaned = username.trim();
-    if (!cleaned) throw new ValidationError('username must be a non-empty string');
+    const cleaned = requireNonEmpty(username, 'username');
 
     const raw = await this.deps.executor.execute(
       () => this.deps.transport.findUserByUsername(cleaned),
@@ -192,8 +259,7 @@ export class UsersService {
 
   public async getLastOnline(userId: string): Promise<LastOnlineInfo> {
     ensureConnected(this.deps.transport);
-    const id = userId.trim();
-    if (!id) throw new ValidationError('userId must be a non-empty string');
+    const id = requireNonEmpty(userId, 'userId');
 
     const raw = await this.deps.executor.execute(() => this.deps.transport.getLastOnline(id), {
       operation: 'users.getLastOnline',
@@ -208,6 +274,9 @@ export class ContactsService {
 
   public async list(options: { count?: number; page?: number } = {}): Promise<Contact[]> {
     ensureConnected(this.deps.transport);
+    assertOptionalPositiveInt(options.count, 'count');
+    assertOptionalPositiveInt(options.page, 'page');
+
     const rawList = await this.deps.executor.execute(
       () => this.deps.transport.getAllFriends(options.count, options.page),
       { operation: 'contacts.list', idempotent: true },
@@ -222,16 +291,17 @@ export class ContactsService {
 
   public async sendRequest(userId: string, message = 'Hello!'): Promise<void> {
     ensureConnected(this.deps.transport);
-    if (!userId.trim()) throw new ValidationError('userId must not be empty');
-    await this.deps.executor.execute(
-      () => this.deps.transport.sendFriendRequest(userId.trim(), message),
-      { operation: 'contacts.sendRequest', idempotent: false },
-    );
+    const id = requireNonEmpty(userId, 'userId');
+    await this.deps.executor.execute(() => this.deps.transport.sendFriendRequest(id, message), {
+      operation: 'contacts.sendRequest',
+      idempotent: false,
+    });
   }
 
   public async acceptRequest(userId: string): Promise<void> {
     ensureConnected(this.deps.transport);
-    await this.deps.executor.execute(() => this.deps.transport.acceptFriendRequest(userId.trim()), {
+    const id = requireNonEmpty(userId, 'userId');
+    await this.deps.executor.execute(() => this.deps.transport.acceptFriendRequest(id), {
       operation: 'contacts.acceptRequest',
       idempotent: true,
     });
@@ -239,7 +309,8 @@ export class ContactsService {
 
   public async rejectRequest(userId: string): Promise<void> {
     ensureConnected(this.deps.transport);
-    await this.deps.executor.execute(() => this.deps.transport.rejectFriendRequest(userId.trim()), {
+    const id = requireNonEmpty(userId, 'userId');
+    await this.deps.executor.execute(() => this.deps.transport.rejectFriendRequest(id), {
       operation: 'contacts.rejectRequest',
       idempotent: true,
     });
@@ -247,34 +318,41 @@ export class ContactsService {
 
   public async remove(userId: string): Promise<void> {
     ensureConnected(this.deps.transport);
-    await this.deps.executor.execute(() => this.deps.transport.removeFriend(userId.trim()), {
+    const id = requireNonEmpty(userId, 'userId');
+    await this.deps.executor.execute(() => this.deps.transport.removeFriend(id), {
       operation: 'contacts.remove',
       idempotent: true,
     });
+    this.deps.userCache.delete(id);
   }
 
   public async block(userId: string): Promise<void> {
     ensureConnected(this.deps.transport);
-    await this.deps.executor.execute(() => this.deps.transport.blockUser(userId.trim()), {
+    const id = requireNonEmpty(userId, 'userId');
+    await this.deps.executor.execute(() => this.deps.transport.blockUser(id), {
       operation: 'contacts.block',
       idempotent: true,
     });
+    this.deps.userCache.delete(id);
   }
 
   public async unblock(userId: string): Promise<void> {
     ensureConnected(this.deps.transport);
-    await this.deps.executor.execute(() => this.deps.transport.unblockUser(userId.trim()), {
+    const id = requireNonEmpty(userId, 'userId');
+    await this.deps.executor.execute(() => this.deps.transport.unblockUser(id), {
       operation: 'contacts.unblock',
       idempotent: true,
     });
+    this.deps.userCache.delete(id);
   }
 
   public async setAlias(userId: string, alias: string): Promise<void> {
     ensureConnected(this.deps.transport);
-    await this.deps.executor.execute(
-      () => this.deps.transport.setFriendAlias(userId.trim(), alias),
-      { operation: 'contacts.setAlias', idempotent: true },
-    );
+    const id = requireNonEmpty(userId, 'userId');
+    await this.deps.executor.execute(() => this.deps.transport.setFriendAlias(id, alias), {
+      operation: 'contacts.setAlias',
+      idempotent: true,
+    });
   }
 
   public async getOnline(): Promise<OnlineStatus[]> {
@@ -301,10 +379,9 @@ export class GroupsService {
     return summaries;
   }
 
-  public async get(groupId: string, options?: { skipCache?: boolean }): Promise<Group> {
+  public async get(groupId: string, options?: CacheLookupOptions): Promise<Group> {
     ensureConnected(this.deps.transport);
-    const id = groupId.trim();
-    if (!id) throw new ValidationError('groupId must be a non-empty string');
+    const id = requireNonEmpty(groupId, 'groupId');
 
     if (!options?.skipCache) {
       const cached = this.deps.groupCache.get(id);
@@ -325,16 +402,32 @@ export class GroupsService {
     });
   }
 
-  public async getMany(groupIds: readonly string[]): Promise<Record<string, Group>> {
+  public async getMany(
+    groupIds: readonly string[],
+    options?: CacheLookupOptions,
+  ): Promise<Record<string, Group>> {
     ensureConnected(this.deps.transport);
-    const ids = groupIds.map((g) => g.trim()).filter(Boolean);
-    if (ids.length === 0) throw new ValidationError('groupIds must not be empty');
+    const ids = requireUniqueNonEmptyIds(groupIds, 'groupIds');
+    const out: Record<string, Group> = {};
+    const missing: string[] = [];
 
-    const map = await this.deps.executor.execute(() => this.deps.transport.getGroupInfo(ids), {
+    for (const id of ids) {
+      const cached = options?.skipCache ? undefined : this.deps.groupCache.get(id);
+      if (cached) {
+        out[id] = cached;
+      } else {
+        missing.push(id);
+      }
+    }
+
+    if (missing.length === 0) {
+      return out;
+    }
+
+    const map = await this.deps.executor.execute(() => this.deps.transport.getGroupInfo(missing), {
       operation: 'groups.getMany',
       idempotent: true,
     });
-    const out: Record<string, Group> = {};
     for (const [id, raw] of Object.entries(map)) {
       const group = new Group(mapGroupData(raw, id), this.deps.actions);
       this.deps.registry.registerGroup(group.id);
@@ -346,8 +439,7 @@ export class GroupsService {
 
   public async create(options: { name?: string; members: readonly string[] }): Promise<Group> {
     ensureConnected(this.deps.transport);
-    const members = options.members.map((m) => m.trim()).filter(Boolean);
-    if (members.length === 0) throw new ValidationError('members must contain at least one userId');
+    const members = requireUniqueNonEmptyIds(options.members, 'members');
 
     const created = await this.deps.executor.execute(
       () => this.deps.transport.createGroup({ name: options.name, members }),
@@ -359,8 +451,7 @@ export class GroupsService {
 
   public async getMembers(memberIds: readonly string[]): Promise<GroupMember[]> {
     ensureConnected(this.deps.transport);
-    const ids = memberIds.map((m) => m.trim()).filter(Boolean);
-    if (ids.length === 0) throw new ValidationError('memberIds must not be empty');
+    const ids = requireUniqueNonEmptyIds(memberIds, 'memberIds');
 
     const profiles = await this.deps.executor.execute(
       () => this.deps.transport.getGroupMembersInfo(ids),
@@ -371,9 +462,8 @@ export class GroupsService {
 
   public async addMembers(groupId: string, userIds: readonly string[]): Promise<void> {
     ensureConnected(this.deps.transport);
-    const id = groupId.trim();
-    const ids = userIds.map((u) => u.trim()).filter(Boolean);
-    if (!id || ids.length === 0) throw new ValidationError('groupId and userIds are required');
+    const id = requireNonEmpty(groupId, 'groupId');
+    const ids = requireUniqueNonEmptyIds(userIds, 'userIds');
     await this.deps.executor.execute(() => this.deps.transport.addGroupMembers(id, ids), {
       operation: 'groups.addMembers',
       idempotent: true,
@@ -383,9 +473,8 @@ export class GroupsService {
 
   public async removeMembers(groupId: string, userIds: readonly string[]): Promise<void> {
     ensureConnected(this.deps.transport);
-    const id = groupId.trim();
-    const ids = userIds.map((u) => u.trim()).filter(Boolean);
-    if (!id || ids.length === 0) throw new ValidationError('groupId and userIds are required');
+    const id = requireNonEmpty(groupId, 'groupId');
+    const ids = requireUniqueNonEmptyIds(userIds, 'userIds');
     await this.deps.executor.execute(() => this.deps.transport.removeGroupMembers(id, ids), {
       operation: 'groups.removeMembers',
       idempotent: true,
@@ -395,9 +484,9 @@ export class GroupsService {
 
   public async rename(groupId: string, name: string): Promise<void> {
     ensureConnected(this.deps.transport);
-    const id = groupId.trim();
-    if (!id || !name.trim()) throw new ValidationError('groupId and name are required');
-    await this.deps.executor.execute(() => this.deps.transport.renameGroup(id, name.trim()), {
+    const id = requireNonEmpty(groupId, 'groupId');
+    const trimmedName = requireNonEmpty(name, 'name');
+    await this.deps.executor.execute(() => this.deps.transport.renameGroup(id, trimmedName), {
       operation: 'groups.rename',
       idempotent: true,
     });
@@ -406,8 +495,7 @@ export class GroupsService {
 
   public async leave(groupId: string): Promise<void> {
     ensureConnected(this.deps.transport);
-    const id = groupId.trim();
-    if (!id) throw new ValidationError('groupId is required');
+    const id = requireNonEmpty(groupId, 'groupId');
     await this.deps.executor.execute(() => this.deps.transport.leaveGroup(id), {
       operation: 'groups.leave',
       idempotent: false,
@@ -419,22 +507,17 @@ export class GroupsService {
 export class ConversationsService {
   constructor(private readonly deps: ServiceDeps) {}
 
-  private fetchGroupIds = async (): Promise<string[]> => {
-    const map = await this.deps.transport.getAllGroups();
-    return Object.keys(map);
-  };
-
   public async get(id: string, threadType?: ThreadType): Promise<Conversation> {
     ensureConnected(this.deps.transport);
-    if (!id.trim()) throw new ValidationError('conversation id must not be empty');
-    const resolved = await this.deps.registry.resolve(id, threadType, this.fetchGroupIds);
+    const cleaned = requireNonEmpty(id, 'conversationId');
+    const resolved = await resolveThreadTarget(this.deps, cleaned, threadType);
     return new Conversation(resolved.threadId, resolved.threadType, this.deps.actions);
   }
 
   public async getMessages(conversationId: string, count?: number): Promise<MessagePage> {
     ensureConnected(this.deps.transport);
-    const id = conversationId.trim();
-    if (!id) throw new ValidationError('conversationId must not be empty');
+    const id = requireNonEmpty(conversationId, 'conversationId');
+    assertOptionalPositiveInt(count, 'count');
     const res = await this.deps.executor.execute(
       () => this.deps.transport.getGroupChatHistory(id, count),
       { operation: 'conversations.getMessages', idempotent: true },
@@ -462,39 +545,35 @@ export class ConversationsService {
     });
   }
 
-  public async pin(target: ThreadTarget, pinned = true): Promise<void> {
+  public async pin(
+    target: ThreadTarget,
+    pinned = true,
+    explicitType?: ThreadType,
+  ): Promise<void> {
     ensureConnected(this.deps.transport);
-    const { threadId, threadType } = await this.deps.registry.resolve(
-      target,
-      undefined,
-      this.fetchGroupIds,
-    );
+    const { threadId, threadType } = await resolveThreadTarget(this.deps, target, explicitType);
     await this.deps.executor.execute(
       () => this.deps.transport.setPinnedConversations([threadId], pinned, threadType),
       { operation: 'conversations.pin', idempotent: true },
     );
   }
 
-  public async mute(target: ThreadTarget, durationSeconds: number): Promise<void> {
+  public async mute(
+    target: ThreadTarget,
+    durationSeconds: number,
+    explicitType?: ThreadType,
+  ): Promise<void> {
     ensureConnected(this.deps.transport);
-    const { threadId, threadType } = await this.deps.registry.resolve(
-      target,
-      undefined,
-      this.fetchGroupIds,
-    );
+    const { threadId, threadType } = await resolveThreadTarget(this.deps, target, explicitType);
     await this.deps.executor.execute(
       () => this.deps.transport.setMute(threadId, durationSeconds, threadType),
       { operation: 'conversations.mute', idempotent: true },
     );
   }
 
-  public async sendTyping(target: ThreadTarget): Promise<void> {
+  public async sendTyping(target: ThreadTarget, explicitType?: ThreadType): Promise<void> {
     ensureConnected(this.deps.transport);
-    const { threadId, threadType } = await this.deps.registry.resolve(
-      target,
-      undefined,
-      this.fetchGroupIds,
-    );
+    const { threadId, threadType } = await resolveThreadTarget(this.deps, target, explicitType);
     await this.deps.executor.execute(() => this.deps.transport.sendTyping(threadId, threadType), {
       operation: 'conversations.sendTyping',
       idempotent: true,
@@ -504,11 +583,6 @@ export class ConversationsService {
 
 export class MessagesService {
   constructor(private readonly deps: ServiceDeps) {}
-
-  private fetchGroupIds = async (): Promise<string[]> => {
-    const map = await this.deps.transport.getAllGroups();
-    return Object.keys(map);
-  };
 
   /**
    * Unified message sender. Automatically resolves threadType from target or Group ID cache.
@@ -535,19 +609,11 @@ export class MessagesService {
       throw new ValidationError('Message payload must contain text or media/link/sticker');
     }
 
-    const targetLike =
-      target instanceof Message
-        ? { id: target.threadId, threadType: target.threadType }
-        : target;
-
-    const resolved = await this.deps.registry.resolve(
-      targetLike,
+    const resolved = await resolveThreadTarget(
+      this.deps,
+      target,
       explicitType ?? payload.threadType,
-      this.fetchGroupIds,
     );
-    if (!resolved.threadId) {
-      throw new ValidationError('Target threadId must be a non-empty string');
-    }
 
     return this.deps.executor.execute(
       () => this.deps.transport.sendMessage(resolved.threadId, payload, resolved.threadType),
@@ -604,11 +670,6 @@ export class MediaService {
     private readonly messages: MessagesService,
   ) {}
 
-  private fetchGroupIds = async (): Promise<string[]> => {
-    const map = await this.deps.transport.getAllGroups();
-    return Object.keys(map);
-  };
-
   public async upload(
     target: ThreadTarget,
     sources: MediaInput | readonly MediaInput[],
@@ -618,15 +679,7 @@ export class MediaService {
     const list = Array.isArray(sources) ? sources : [sources];
     if (list.length === 0) throw new ValidationError('upload requires at least one media item');
 
-    const targetLike =
-      target instanceof Message
-        ? { id: target.threadId, threadType: target.threadType }
-        : target;
-    const { threadId, threadType } = await this.deps.registry.resolve(
-      targetLike,
-      explicitType,
-      this.fetchGroupIds,
-    );
+    const { threadId, threadType } = await resolveThreadTarget(this.deps, target, explicitType);
 
     const raw = await this.deps.executor.execute(
       () => this.deps.transport.uploadAttachment(list, threadId, threadType),
